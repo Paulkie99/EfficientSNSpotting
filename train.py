@@ -3,6 +3,7 @@ import os
 import shutil
 
 from keras_nlp.layers import TransformerEncoder
+from keras_transformer import get_custom_objects
 from tensorflow.keras.optimizers import Adam
 from keras.callbacks import ModelCheckpoint, EarlyStopping, CSVLogger, History, TensorBoard
 from keras.models import load_model, save_model
@@ -12,7 +13,7 @@ import tensorflow as tf
 from tqdm import tqdm
 from data_generator import SoccerNetTrainVideoDataGenerator, TransformerTrainFeatureGenerator, \
     SoccerNetTrainDataset
-from util import release_gpu_memory, save_train_latex_table, save_test_latex_table, create_model, PositionalEmbedding, \
+from util import release_gpu_memory, save_train_latex_table, save_test_latex_table, create_model, \
     setup_environment
 from numpy import inf, argmin, mean, std, sqrt, square
 from test import test_soccernet
@@ -26,9 +27,8 @@ def train(data, iteration, cv_iter, queue) -> History:
     :return: Training history.
     """
     model = (
-        create_model(data) if data["saved model"] == "" else load_model(data["saved model"], custom_objects={
-            'PositionalEmbedding': PositionalEmbedding,
-            'TransformerEncoder': TransformerEncoder}))
+        create_model(data) if data["saved model"] == "" else load_model(data["saved model"],
+                                                                        custom_objects=get_custom_objects()))
     optimizer = Adam(learning_rate=float(data["learning rate"]), decay=float(data["decay"]))
     model.compile(optimizer,
                   loss='binary_crossentropy',
@@ -57,8 +57,8 @@ def train(data, iteration, cv_iter, queue) -> History:
 
     # Tensorboard
     log_dir = join("models", "SoccerNet", data["model"], 'tensorboard', f'{cv_iter}')
-    tboard_callback = TensorBoard(log_dir=log_dir)
-    # profile_batch='10,129')
+    tboard_callback = TensorBoard(log_dir=log_dir,
+                                  profile_batch='10,129')
 
     callbacks = [best_checkpointer, csv_logger, early_stopper, tboard_callback]
 
@@ -102,17 +102,19 @@ def train(data, iteration, cv_iter, queue) -> History:
                                                            stride=data["stride"], base_path=data["dataset path"],
                                                            data_subset="train", cv_iter=cv_iter)
         train_generator = tf.data.Dataset.from_generator(train_generator, output_signature=(
-            tf.TensorSpec(shape=(data["window length"], 8576), dtype=tf.uint8),
+            tf.TensorSpec(shape=(data["window length"], 8576), dtype=tf.float32),
             tf.TensorSpec(shape=(18,), dtype=tf.uint8)
         ))
-        train_generator = train_generator.batch(data["batch size"], num_parallel_calls=tf.data.AUTOTUNE,
-                                                deterministic=False).prefetch(tf.data.AUTOTUNE)
+        train_generator = train_generator.shuffle(data["batch size"]).batch(data["batch size"],
+                                                                            num_parallel_calls=tf.data.AUTOTUNE,
+                                                                            deterministic=False).prefetch(
+            tf.data.AUTOTUNE)
 
         validation_generator = TransformerTrainFeatureGenerator(feature_type="baidu", window_len=data["window length"],
                                                                 stride=data["stride"], base_path=data["dataset path"],
                                                                 data_subset="valid", cv_iter=cv_iter)
         validation_generator = tf.data.Dataset.from_generator(validation_generator, output_signature=(
-            tf.TensorSpec(shape=(data["window length"], 8576), dtype=tf.uint8),
+            tf.TensorSpec(shape=(data["window length"], 8576), dtype=tf.float32),
             tf.TensorSpec(shape=(18,), dtype=tf.uint8)
         ))
         validation_generator = validation_generator.batch(data["batch size"], num_parallel_calls=tf.data.AUTOTUNE,
@@ -174,7 +176,8 @@ def train_for_iterations(data):
                 best_val_loss = min(history['val_loss'])
                 best_val_iter = i
                 load_path = join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}', f'best_{i}.hdf5')
-                save_path = join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}', f'overall_best.hdf5')
+                save_path = join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}',
+                                 f'overall_best.hdf5')
                 shutil.copy(load_path, save_path)
 
             test_accuracy = test_soccernet(data, f'best_{i}.hdf5', cv_iter=cv_iter)

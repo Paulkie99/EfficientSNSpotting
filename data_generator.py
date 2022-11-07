@@ -306,12 +306,12 @@ class TransformerTrainFeatureGenerator:
             seconds = int(time[-2::])
             t_seconds = seconds + 60 * minutes  # time of event in seconds
 
-            if t_seconds < self.extractor_win - self.extractor_stride:
+            if t_seconds <= self.extractor_win - self.extractor_stride:
                 f_index = 0
-                rest = max(t_seconds // self.extractor_stride, 1)
+                rest = max(t_seconds // self.extractor_stride, 1) + 1
             else:
-                f_index = (t_seconds - (self.extractor_win - self.extractor_stride)) // self.extractor_stride
-                rest = (self.extractor_win - self.extractor_stride) // self.extractor_stride
+                f_index = (t_seconds - (self.extractor_win - self.extractor_stride)) // self.extractor_stride - 1
+                rest = (self.extractor_win - self.extractor_stride) // self.extractor_stride + 2
 
             label = self.dict_event[event]  # event label
 

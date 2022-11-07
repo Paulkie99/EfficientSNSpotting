@@ -1,19 +1,23 @@
 import gc
 import json
 import os
+import shutil
 from math import ceil
 
 import cv2
 import h5py
-from tensorflow import shape, range, reduce_any, cast
+from keras_pos_embd import TrigPosEmbedding
+from keras_transformer import get_encoders, get_encoder_component
+from tensorflow import shape, range, reduce_any, cast, device
 from keras import Input
 from keras.layers import Layer
 from keras_nlp.layers import TransformerEncoder, SinePositionEncoding
 from numpy import float32, save, zeros, single, array
-from os.path import join, exists
+from os.path import join, exists, isfile
 from keras.applications.inception_v3 import InceptionV3, preprocess_input
 from keras.models import Model, load_model
 from keras.layers import GlobalAveragePooling2D, Dense, Embedding, Flatten
+from tensorflow._api.v2 import debugging
 from tqdm import tqdm
 from keras.backend import clear_session
 from tabulate import tabulate
@@ -41,14 +45,18 @@ def setup_environment(data):
     environ['TF_GPU_THREAD_MODE'] = 'gpu_private'
     environ['TF_XLA_FLAGS'] = "--tf_xla_auto_jit=2 --tf_xla_cpu_global_jit"
     environ['TF_GPU_ALLOCATOR'] = 'cuda_malloc_async'
+    environ['CUDA_VISIBLE_DEVICES'] = "1, 0"
     gpus = list_physical_devices('GPU')
     for gpu in gpus:
         set_memory_growth(gpu, True)
-    # mixed_precision.set_global_policy("mixed_float16")
+    # policy = mixed_precision.Policy('mixed_float16')
+    # mixed_precision.set_global_policy(policy)
     if data["jit"]:
         set_jit(True)
-
     release_gpu_memory()
+    debugging.set_log_device_placement(
+        True
+    )
 
 
 def getDuration(video_path):
@@ -356,49 +364,30 @@ def saveResNetFeaturesForSoccerNet(soccernet_path: str = "E:\\SoccerNet", resnet
             save(join(base_path, f"{half}_ResNet_soccer_embeddings"), resnet_features)
 
 
-class PositionalEmbedding(Layer):
-    def __init__(self, sequence_length, output_dim, **kwargs):
-        super().__init__(**kwargs)
-        self.position_embeddings = Embedding(
-            input_dim=sequence_length, output_dim=output_dim
-        )
-        self.sequence_length = sequence_length
-        self.output_dim = output_dim
-
-    def call(self, inputs):
-        # The inputs are of shape: `(batch_size, frames, num_features)`
-        length = shape(inputs)[1]
-        positions = range(start=0, limit=length, delta=1)
-        embedded_positions = self.position_embeddings(positions)
-        embedded_positions = SinePositionEncoding()(embedded_positions)
-        return inputs + embedded_positions
-
-    def compute_mask(self, inputs, mask=None):
-        mask = reduce_any(cast(inputs, "bool"), axis=-1)
-        return mask
-
-    def get_config(self):
-        config = super().get_config()
-        config.update({
-            "sequence_length": self.sequence_length,
-            "output_dim": self.output_dim,
-        })
-        return config
-
-
 def createTransformerModel(model: str = "ResNet", seq_length: int = 7):
     if "resnet" in model.lower():
         shape = (seq_length, 512)
     elif "baidu" in model.lower():
         shape = (seq_length, 8576)
-    inputs = Input(shape, dtype=float32)
-    outputs = PositionalEmbedding(shape[0], shape[1])(inputs)
 
-    for i in range(3):
-        outputs = TransformerEncoder(intermediate_dim=64, num_heads=4)(outputs)
+    with device('/GPU:0'):
+        inputs = Input(shape, dtype=float32)
+        outputs = TrigPosEmbedding(
+            mode=TrigPosEmbedding.MODE_ADD,
+            name='Encoder-Embedding',
+        )(inputs)
+    with device('/GPU:0'):
+        outputs = get_encoder_component('Encoder-1-MultiHeadSelfAttention', outputs, 4, 64)
 
-    outputs = Flatten()(outputs)
-    outputs = Dense(18, activation='sigmoid')(outputs)
+    with device('/GPU:1'):
+        outputs = get_encoder_component('Encoder-2-MultiHeadSelfAttention', outputs, 4, 64)
+
+    with device('/GPU:1'):
+        outputs = get_encoder_component('Encoder-3-MultiHeadSelfAttention', outputs, 4, 64)
+
+    with device('/GPU:1'):
+        outputs = Flatten()(outputs)
+        outputs = Dense(18, activation='sigmoid')(outputs)
 
     model = Model(inputs, outputs)
 
@@ -441,4 +430,10 @@ def create_model(data):
 
 if __name__ == '__main__':
     # delete_soccernet_frames()
-    check_extract_soccernet_frames()
+    # check_extract_soccernet_frames()
+    for game in tqdm(getListGames(["train", "valid"])):
+        source_path = join("E:\\SoccerNet", game)
+        dest_path = join("F:\\SoccerNet", game)
+
+        shutil.copy(join(source_path, "Labels-cameras.json"), join(dest_path, "Labels-cameras.json"))
+        shutil.copy(join(source_path, "Labels-v2.json"), join(dest_path, "Labels-v2.json"))

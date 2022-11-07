@@ -5,8 +5,9 @@ import zipfile
 from SoccerNet.Evaluation.utils import INVERSE_EVENT_DICTIONARY_V2
 from keras.models import load_model
 from keras_nlp.layers import TransformerEncoder
+from keras_transformer import get_custom_objects
 
-from util import release_gpu_memory, get_cv_data, PositionalEmbedding
+from util import release_gpu_memory, get_cv_data
 from data_generator import SoccerNetTestVideoGenerator
 from numpy import argmax, minimum, maximum, transpose, copy, load, array
 from SoccerNet.Evaluation.ActionSpotting import evaluate
@@ -52,8 +53,7 @@ def test_soccernet(data, model_name: str = 'overall_best.hdf5', cv_iter: int = 0
             f"The model you tried to load does not exist: {os.path.join(path, 'checkpoints', f'{cv_iter}', model_name)}")
 
     model = load_model(os.path.join(path, "checkpoints", f'{cv_iter}', model_name),
-                       custom_objects={'PositionalEmbedding': PositionalEmbedding,
-                                       'TransformerEncoder': TransformerEncoder})
+                       custom_objects=get_custom_objects())
 
     games = get_cv_data("test", cv_iter)
 

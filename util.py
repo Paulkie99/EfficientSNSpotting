@@ -6,16 +6,16 @@ import json
 import os
 import shutil
 from math import ceil
-
+import tensorflow as tf
 import cv2
 import h5py
 import keras_transformer
-from tensorflow import range as trange
+from tensorflow import range as trange, newaxis
 from keras.metrics import AUC, Precision, Recall
 from keras_pos_embd import TrigPosEmbedding
 from keras_transformer import get_encoders
-from keras import Input
-from keras.layers import Layer, GlobalMaxPooling1D
+from keras import Input, Sequential
+from keras.layers import Layer, GlobalMaxPooling1D, Add
 from keras_nlp.layers import TransformerEncoder, SinePositionEncoding
 from numpy import float32, save, zeros, single, array, where, load, append
 from os.path import join, exists, isfile
@@ -63,7 +63,7 @@ def get_config(data):
 
 
 def isConfigEqual(conf1, conf2):
-    if conf1["model"].split(' ')[0] != conf2["model"].split(' ')[0]:
+    if conf1["model"].split(' ')[:-1] != conf2["model"].split(' ')[:-1]:
         return False
     if conf1["CV iterations"] != conf2["CV iterations"]:
         return False
@@ -94,6 +94,7 @@ def isConfigEqual(conf1, conf2):
 
 
 def setup_environment(data):
+    # tf.config.run_functions_eagerly(True)
     environ['TF_GPU_THREAD_MODE'] = 'gpu_private'
     environ['TF_XLA_FLAGS'] = "--tf_xla_auto_jit=2 --tf_xla_cpu_global_jit"
     environ['TF_GPU_ALLOCATOR'] = 'cuda_malloc_async'
@@ -455,9 +456,9 @@ class PositionalEmbedding(Layer):
         # The inputs are of shape: `(batch_size, frames, num_features)`
         length = shape(inputs)[1]
         positions = trange(start=0, limit=length, delta=1)
-        # embedded_positions = self.position_embeddings(positions)
-        # embedded_positions = SinePositionEncoding()(embedded_positions)
-        embedded_positions = SinePositionEncoding()(inputs)
+        embedded_positions = self.position_embeddings(positions)
+        embedded_positions = SinePositionEncoding()(embedded_positions)
+        # embedded_positions = SinePositionEncoding()(inputs)
         return inputs + embedded_positions
 
     def compute_mask(self, inputs, mask=None):
@@ -486,13 +487,16 @@ def createTransformerModel(model: str = "ResNet", seq_length: int = 7):
     elif "baidu" in model.lower():
         shape = (seq_length, 8576)
     inputs = Input(shape, dtype=float32)
-    outputs = PositionalEmbedding(shape[0], shape[1])(inputs)
+    embedding = SinePositionEncoding()(inputs)
+    outputs = Add()([inputs, embedding])
+    # outputs = PositionalEmbedding(shape[0], shape[1])(inputs)
 
     for i in range(3):
         outputs = TransformerEncoder(intermediate_dim=64, num_heads=4)(outputs)
 
-    # outputs = Flatten()(outputs)
-    outputs = GlobalMaxPooling1D()(outputs)
+    outputs = Flatten()(outputs)
+    # outputs = GlobalMaxPooling1D()(outputs)
+    # outputs = Dropout(0.5)(outputs)
     outputs = Dense(18, activation='sigmoid')(outputs)
 
     model = Model(inputs, outputs)
@@ -533,15 +537,14 @@ def create_model(data):
 
     return model_
 
-
 # if __name__ == '__main__':
-    # delete_soccernet_frames()
-    # check_extract_soccernet_frames()
-    # for game in tqdm(getListGames(["train", "valid", "test"])):
-    #     source_path = join("E:\\SoccerNet", game)
-    #     dest_path = join("F:\\SoccerNet", game)
-    #
-    #     if not exists(join(dest_path, "Labels-cameras.json")):
-    #         shutil.copy(join(source_path, "Labels-cameras.json"), join(dest_path, "Labels-cameras.json"))
-    #     if not exists(join(dest_path, "Labels-v2.json")):
-    #         shutil.copy(join(source_path, "Labels-v2.json"), join(dest_path, "Labels-v2.json"))
+# delete_soccernet_frames()
+# check_extract_soccernet_frames()
+# for game in tqdm(getListGames(["train", "valid", "test"])):
+#     source_path = join("E:\\SoccerNet", game)
+#     dest_path = join("F:\\SoccerNet", game)
+#
+#     if not exists(join(dest_path, "Labels-cameras.json")):
+#         shutil.copy(join(source_path, "Labels-cameras.json"), join(dest_path, "Labels-cameras.json"))
+#     if not exists(join(dest_path, "Labels-v2.json")):
+#         shutil.copy(join(source_path, "Labels-v2.json"), join(dest_path, "Labels-v2.json"))

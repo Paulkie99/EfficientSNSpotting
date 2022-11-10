@@ -127,3 +127,17 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+.idea/
+
+models/
+
+configs.npy
+
+*.tempstate11364277895008578207
+
+*.lockfile
+
+*.data-00000-of-00001
+
+*.index

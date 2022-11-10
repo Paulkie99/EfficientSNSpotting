@@ -120,6 +120,8 @@ def test_soccernet(data, model_name: str = 'overall_best.hdf5', cv_iter: int = 0
                        prediction_file="results_spotting.json",
                        version=2)
 
+    print(results)
+
     with open(os.path.join('models', "SoccerNet", data["model"], 'results.json'), 'w') as f:
         json.dump(results, f, indent=4)
 

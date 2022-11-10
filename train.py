@@ -1,3 +1,4 @@
+import glob
 import multiprocessing
 import os
 import shutil
@@ -98,32 +99,38 @@ def train(data, iteration, cv_iter, queue) -> History:
     elif "baidu" in data["model"].lower():
         train_generator = TransformerTrainFeatureGenerator(feature_type="baidu", window_len=data["window length"],
                                                            stride=data["stride"], base_path=data["dataset path"],
-                                                           data_subset="train", cv_iter=cv_iter)
+                                                           data_subset="train", cv_iter=cv_iter,
+                                                           fps=data["feature fps"])
         train_generator = tf.data.Dataset.from_generator(train_generator, output_signature=(
             tf.TensorSpec(shape=(data["window length"], 8576), dtype=tf.float32),
             tf.TensorSpec(shape=(18,), dtype=tf.uint8)
         ))
-        train_generator = train_generator.shuffle(2000).batch(data["batch size"],
-                                                              num_parallel_calls=tf.data.AUTOTUNE,
-                                                              deterministic=False).prefetch(
+        train_generator = train_generator.cache("train_cache").shuffle(2000).batch(data["batch size"],
+                                                                                   num_parallel_calls=tf.data.AUTOTUNE,
+                                                                                   deterministic=False).prefetch(
             tf.data.AUTOTUNE)
 
         validation_generator = TransformerTrainFeatureGenerator(feature_type="baidu", window_len=data["window length"],
                                                                 stride=data["stride"], base_path=data["dataset path"],
-                                                                data_subset="valid", cv_iter=cv_iter)
+                                                                data_subset="valid", cv_iter=cv_iter,
+                                                                fps=data["feature fps"])
         validation_generator = tf.data.Dataset.from_generator(validation_generator, output_signature=(
             tf.TensorSpec(shape=(data["window length"], 8576), dtype=tf.float32),
             tf.TensorSpec(shape=(18,), dtype=tf.uint8)
         ))
+
         validation_generator = validation_generator.batch(data["batch size"],
                                                           num_parallel_calls=tf.data.AUTOTUNE,
-                                                          deterministic=False).prefetch(
+                                                          deterministic=False).cache().prefetch(
             tf.data.AUTOTUNE)
 
     history = model.fit(x=train_generator, verbose=1, callbacks=callbacks, epochs=data["epochs"],
                         use_multiprocessing=data["multi proc"],
                         workers=data["workers"], validation_data=validation_generator,
                         initial_epoch=data["init epoch"], validation_freq=1, max_queue_size=data["queue size"])
+
+    [os.remove(path) for path in glob.glob("*train_cache*")]
+    [os.remove(path) for path in glob.glob("*valid_cache*")]
 
     del train_generator
     del validation_generator
@@ -162,6 +169,7 @@ def train_for_iterations(data):
             history = queue.get()
             p.join()
             print("Joined")
+            # history = train(data, i, cv_iter, queue)
 
             save_metrics["epochs"].append(len(history['val_loss']))
             index_of_min_validation_loss = argmin(history['val_loss'])
@@ -178,6 +186,7 @@ def train_for_iterations(data):
 
             test_accuracy = test_soccernet(data, f'best_{i}.hdf5', cv_iter=cv_iter)
             save_metrics["test a-mAP"].append(test_accuracy)
+            os.remove(join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}', f'best_{i}.hdf5'))
 
         to_save = {}
         for k in save_metrics.keys():
@@ -227,6 +236,21 @@ if __name__ == '__main__':
     data = get_config(data)
 
     setup_environment(data)
+
+    # train_generator = TransformerTrainFeatureGenerator(feature_type="baidu", window_len=data["window length"],
+    #                                                    stride=data["stride"], base_path=data["dataset path"],
+    #                                                    data_subset="train", cv_iter=0,
+    #                                                    fps=data["feature fps"])
+    # train_generator = tf.data.Dataset.from_generator(train_generator, output_signature=(
+    #     tf.TensorSpec(shape=(data["window length"], 8576), dtype=tf.float32),
+    #     tf.TensorSpec(shape=(18,), dtype=tf.uint8)
+    # ))
+    # train_generator = train_generator.shuffle(2000).batch(data["batch size"],
+    #                                                       num_parallel_calls=tf.data.AUTOTUNE,
+    #                                                       deterministic=False).prefetch(
+    #     tf.data.AUTOTUNE)
+    #
+    # results = [(x, y) for x, y in train_generator]
 
     train_for_iterations(data)
 

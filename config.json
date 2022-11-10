@@ -23,5 +23,6 @@
     "append training logs": false,
     "multi proc": true,
     "workers": 6,
-    "queue size": 15
+    "queue size": 15,
+    "train metrics": ["auc", "precision", "accuracy", "recall"]
 }

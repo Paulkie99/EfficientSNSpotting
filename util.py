@@ -1,4 +1,7 @@
+import copy
+import datetime
 import gc
+import glob
 import json
 import os
 import shutil
@@ -6,20 +9,22 @@ from math import ceil
 
 import cv2
 import h5py
+import keras_transformer
+from tensorflow import range as trange
+from keras.metrics import AUC, Precision, Recall
 from keras_pos_embd import TrigPosEmbedding
-from keras_transformer import get_encoders, get_encoder_component
-from tensorflow import shape, range, reduce_any, cast, device
+from keras_transformer import get_encoders
 from keras import Input
-from keras.layers import Layer
+from keras.layers import Layer, GlobalMaxPooling1D
 from keras_nlp.layers import TransformerEncoder, SinePositionEncoding
-from numpy import float32, save, zeros, single, array
+from numpy import float32, save, zeros, single, array, where, load, append
 from os.path import join, exists, isfile
 from keras.applications.inception_v3 import InceptionV3, preprocess_input
 from keras.models import Model, load_model
 from keras.layers import GlobalAveragePooling2D, Dense, Embedding, Flatten
-from tensorflow._api.v2 import debugging
+from tensorflow import reduce_any
 from tqdm import tqdm
-from keras.backend import clear_session
+from keras.backend import clear_session, shape, cast
 from tabulate import tabulate
 from SoccerNet.Downloader import getListGames, SoccerNetDownloader
 from skvideo.measure import scenedet
@@ -41,11 +46,57 @@ from os import environ
 from tensorflow.config.optimizer import set_jit
 
 
+def get_config(data):
+    path = "configs.npy"
+    if exists(path):
+        config_list = load(path, allow_pickle=True)
+    else:
+        config_list = []
+    for config in range(len(config_list)):
+        if isConfigEqual(data, config_list[config]):
+            data["model"] = data["model"] + ' ' + str(config)
+            return data
+    data["model"] = data["model"] + ' ' + str(len(config_list))
+    append(config_list, data)
+    save(path, config_list)
+    return data
+
+
+def isConfigEqual(conf1, conf2):
+    if conf1["model"].split(' ')[0] != conf2["model"].split(' ')[0]:
+        return False
+    if conf1["CV iterations"] != conf2["CV iterations"]:
+        return False
+    if conf1["MC iterations"] != conf2["MC iterations"]:
+        return False
+    if conf1["learning rate"] != conf2["learning rate"]:
+        return False
+    if conf1["decay"] != conf2["decay"]:
+        return False
+    if conf1["batch size"] != conf2["batch size"]:
+        return False
+    if conf1["epochs"] != conf2["epochs"]:
+        return False
+    if conf1["feature fps"] != conf2["feature fps"]:
+        return False
+    if conf1["frame dims"] != conf2["frame dims"]:
+        return False
+    if conf1["resize method"] != conf2["resize method"]:
+        return False
+    if conf1["window length"] != conf2["window length"]:
+        return False
+    if conf1["stride"] != conf2["stride"]:
+        return False
+    if conf1["patience"] != conf2["patience"]:
+        return False
+
+    return True
+
+
 def setup_environment(data):
     environ['TF_GPU_THREAD_MODE'] = 'gpu_private'
     environ['TF_XLA_FLAGS'] = "--tf_xla_auto_jit=2 --tf_xla_cpu_global_jit"
     environ['TF_GPU_ALLOCATOR'] = 'cuda_malloc_async'
-    environ['CUDA_VISIBLE_DEVICES'] = "1, 0"
     gpus = list_physical_devices('GPU')
     for gpu in gpus:
         set_memory_growth(gpu, True)
@@ -54,19 +105,30 @@ def setup_environment(data):
     if data["jit"]:
         set_jit(True)
     release_gpu_memory()
-    debugging.set_log_device_placement(
-        True
-    )
 
 
 def getDuration(video_path):
-    """Get the duration (in seconds) for a video.
+    """Get the duration (in frames) for a video.
 
     Keyword arguments:
     video_path -- the path of the video
     """
     with VideoFileClip(video_path) as clip:
         return clip.reader.nframes
+
+
+def getDurationSeconds(video_path):
+    """Get the duration (in frames) for a video.
+
+    Keyword arguments:
+    video_path -- the path of the video
+    """
+    cap = cv2.VideoCapture(video_path)
+    total = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+    fps = cap.get(cv2.CAP_PROP_FPS)
+
+    duration = total / fps
+    return float(duration)
 
 
 def delete_soccernet_frames():
@@ -186,12 +248,17 @@ def resize(frames, method, frame_dims):
     return frames
 
 
-def save_train_latex_table(dataset: str = "SoccerNet"):
-    base_len = len(join("models", dataset)) + 1
+def save_train_latex_table(data_):
+    base_len = len(join("models", "SoccerNet")) + 1
     headers = ['Model']
-    data = [["Training Accuracy"], ["Validation Accuracy"], ["Test Accuracy"],
-            ["Training Loss"], ["Validation Loss"], ["Epochs"]]
-    for base, dirs, files in os.walk(join("models", dataset)):
+    metrics = data_["train metrics"] + 'loss'
+
+    data = []
+    for i in metrics:
+        data.append(["Training " + i[0].upper() + i[1:]])
+        data.append(["Validation " + i[0].upper() + i[1:]])
+    data += [["Test a-mAP"]] + [["Epochs"]]
+    for base, dirs, files in os.walk(join("models", "SoccerNet")):
         for file in files:
             if file == "avg_metrics_all_cv.json":
                 path = join(base, file)
@@ -199,21 +266,23 @@ def save_train_latex_table(dataset: str = "SoccerNet"):
                     jdata = json.load(f)
                     headers.append(f'{path[base_len:-len(file) - len("results") - len("CV") - 3]}')
                     data[0].append(f'{jdata["train acc"]:.4f} \u00B1 {jdata["train acc std"]:.4f}')
-                    data[1].append(f'{jdata["valid acc"]:.4f} \u00B1 {jdata["valid acc std"]:.4f}')
-                    data[2].append(f'{jdata["test acc"]:.4f} \u00B1 {jdata["test acc std"]:.4f}')
-                    data[3].append(f'{jdata["train loss"]:.4f} \u00B1 {jdata["train loss std"]:.4f}')
-                    data[4].append(f'{jdata["valid loss"]:.4f} \u00B1 {jdata["valid loss std"]:.4f}')
-                    data[5].append(f'{jdata["epochs"]:.4f} \u00B1 {jdata["epochs std"]:.4f}')
+                    for i in range(len(metrics)):
+                        data[i].append(f"{jdata[metrics[i]]:.4f} \u00B1 {jdata[metrics[i] + ' std']:.4f}")
+                        data[i].append(
+                            f"{'val_' + jdata[metrics[i]]:.4f} \u00B1 {'val_' + jdata[metrics[i] + ' std']:.4f}")
 
-    with open(join("models", dataset, 'all_models_train_metrics_latex.txt'), 'w') as f:
+                    data[-2].append(f"{jdata['test a-mAP']:.4f} \u00B1 {jdata['test a-mAP std']:.4f}")
+                    data[-1].append(f"{jdata['epochs']:.4f} \u00B1 {jdata['epochs std']:.4f}")
+
+    with open(join("models", "SoccerNet", f'all_models_train_metrics_latex.txt'), 'w') as f:
         f.write(tabulate(data, headers=headers, tablefmt='latex', floatfmt=".4f"))
 
 
-def save_test_latex_table(dataset: str = "SoccerNet"):
-    base_len = len(join("models", dataset)) + 1
+def save_test_latex_table(data_):
+    base_len = len(join("models", "SoccerNet")) + 1
     headers = ['Model/Metric'] + [f'Class {i}' for i in range(17)]
     data = []
-    for base, dirs, files in os.walk(join("models", dataset)):
+    for base, dirs, files in os.walk(join("models", "SoccerNet")):
         for file in files:
             if file == "results.json":
                 path = join(base, file)
@@ -229,7 +298,7 @@ def save_test_latex_table(dataset: str = "SoccerNet"):
                             data = [add_data]
                         else:
                             data.append(add_data)
-    with open(join("models", dataset, 'all_models_test_metrics_latex.txt'), 'w') as f:
+    with open(join("models", "SoccerNet", 'all_models_test_metrics_latex.txt'), 'w') as f:
         f.write(tabulate(data, headers=headers, tablefmt='latex', floatfmt=".4f"))
 
 
@@ -364,30 +433,67 @@ def saveResNetFeaturesForSoccerNet(soccernet_path: str = "E:\\SoccerNet", resnet
             save(join(base_path, f"{half}_ResNet_soccer_embeddings"), resnet_features)
 
 
+def map_train_metrics_to_funcs(metrics):
+    metrics = array(metrics, dtype=object)
+    metrics[where(metrics == 'auc')[0]] = AUC(multi_label=True)
+    metrics[where(metrics == 'precision')[0]] = Precision(name='precision')
+    metrics[where(metrics == 'recall')[0]] = Recall(name='recall')
+
+    return list(metrics)
+
+
+class PositionalEmbedding(Layer):
+    def __init__(self, sequence_length, output_dim, **kwargs):
+        super().__init__(**kwargs)
+        self.position_embeddings = Embedding(
+            input_dim=sequence_length, output_dim=output_dim
+        )
+        self.sequence_length = sequence_length
+        self.output_dim = output_dim
+
+    def call(self, inputs):
+        # The inputs are of shape: `(batch_size, frames, num_features)`
+        length = shape(inputs)[1]
+        positions = trange(start=0, limit=length, delta=1)
+        # embedded_positions = self.position_embeddings(positions)
+        # embedded_positions = SinePositionEncoding()(embedded_positions)
+        embedded_positions = SinePositionEncoding()(inputs)
+        return inputs + embedded_positions
+
+    def compute_mask(self, inputs, mask=None):
+        mask = reduce_any(cast(inputs, "bool"), axis=-1)
+        return mask
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "sequence_length": self.sequence_length,
+            "output_dim": self.output_dim,
+        })
+        return config
+
+
+def get_custom_objects():
+    ret = {'PositionalEmbedding': PositionalEmbedding, 'TransformerEncoder': TransformerEncoder}
+    for k, v in keras_transformer.get_custom_objects():
+        ret[k] = v
+    return ret
+
+
 def createTransformerModel(model: str = "ResNet", seq_length: int = 7):
     if "resnet" in model.lower():
         shape = (seq_length, 512)
     elif "baidu" in model.lower():
         shape = (seq_length, 8576)
+    inputs = Input(shape, dtype=float32)
+    outputs = PositionalEmbedding(shape[0], shape[1])(inputs)
 
-    with device('/GPU:0'):
-        inputs = Input(shape, dtype=float32)
-        outputs = TrigPosEmbedding(
-            mode=TrigPosEmbedding.MODE_ADD,
-            name='Encoder-Embedding',
-        )(inputs)
-    with device('/GPU:0'):
-        outputs = get_encoder_component('Encoder-1-MultiHeadSelfAttention', outputs, 4, 64)
+    for i in range(3):
+        outputs = TransformerEncoder(intermediate_dim=64, num_heads=4)(outputs)
 
-    with device('/GPU:1'):
-        outputs = get_encoder_component('Encoder-2-MultiHeadSelfAttention', outputs, 4, 64)
-
-    with device('/GPU:1'):
-        outputs = get_encoder_component('Encoder-3-MultiHeadSelfAttention', outputs, 4, 64)
-
-    with device('/GPU:1'):
-        outputs = Flatten()(outputs)
-        outputs = Dense(18, activation='sigmoid')(outputs)
+    # outputs = Flatten()(outputs)
+    outputs = GlobalMaxPooling1D()(outputs)
+    outputs = Dense(18, activation='sigmoid')(outputs)
 
     model = Model(inputs, outputs)
 
@@ -428,12 +534,14 @@ def create_model(data):
     return model_
 
 
-if __name__ == '__main__':
+# if __name__ == '__main__':
     # delete_soccernet_frames()
     # check_extract_soccernet_frames()
-    for game in tqdm(getListGames(["train", "valid"])):
-        source_path = join("E:\\SoccerNet", game)
-        dest_path = join("F:\\SoccerNet", game)
-
-        shutil.copy(join(source_path, "Labels-cameras.json"), join(dest_path, "Labels-cameras.json"))
-        shutil.copy(join(source_path, "Labels-v2.json"), join(dest_path, "Labels-v2.json"))
+    # for game in tqdm(getListGames(["train", "valid", "test"])):
+    #     source_path = join("E:\\SoccerNet", game)
+    #     dest_path = join("F:\\SoccerNet", game)
+    #
+    #     if not exists(join(dest_path, "Labels-cameras.json")):
+    #         shutil.copy(join(source_path, "Labels-cameras.json"), join(dest_path, "Labels-cameras.json"))
+    #     if not exists(join(dest_path, "Labels-v2.json")):
+    #         shutil.copy(join(source_path, "Labels-v2.json"), join(dest_path, "Labels-v2.json"))

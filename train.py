@@ -2,19 +2,17 @@ import multiprocessing
 import os
 import shutil
 
-from keras_nlp.layers import TransformerEncoder
-from keras_transformer import get_custom_objects
+from SoccerNet.utils import getListGames
 from tensorflow.keras.optimizers import Adam
 from keras.callbacks import ModelCheckpoint, EarlyStopping, CSVLogger, History, TensorBoard
 from keras.models import load_model, save_model
-from tensorflow.keras.metrics import AUC
 from os.path import join
 import tensorflow as tf
 from tqdm import tqdm
 from data_generator import SoccerNetTrainVideoDataGenerator, TransformerTrainFeatureGenerator, \
     SoccerNetTrainDataset
 from util import release_gpu_memory, save_train_latex_table, save_test_latex_table, create_model, \
-    setup_environment
+    setup_environment, map_train_metrics_to_funcs, get_custom_objects, get_config
 from numpy import inf, argmin, mean, std, sqrt, square
 from test import test_soccernet
 from plotter import plot_train_history
@@ -32,7 +30,7 @@ def train(data, iteration, cv_iter, queue) -> History:
     optimizer = Adam(learning_rate=float(data["learning rate"]), decay=float(data["decay"]))
     model.compile(optimizer,
                   loss='binary_crossentropy',
-                  metrics=[AUC(multi_label=True), 'accuracy'])
+                  metrics=map_train_metrics_to_funcs(data["train metrics"]))
 
     iteration = str(iteration)
 
@@ -57,8 +55,8 @@ def train(data, iteration, cv_iter, queue) -> History:
 
     # Tensorboard
     log_dir = join("models", "SoccerNet", data["model"], 'tensorboard', f'{cv_iter}')
-    tboard_callback = TensorBoard(log_dir=log_dir,
-                                  profile_batch='10,129')
+    tboard_callback = TensorBoard(log_dir=log_dir)
+    # profile_batch='10,129')
 
     callbacks = [best_checkpointer, csv_logger, early_stopper, tboard_callback]
 
@@ -97,7 +95,7 @@ def train(data, iteration, cv_iter, queue) -> History:
         # validation_generator = validation_generator.batch(batch_size, num_parallel_calls=tf.data.AUTOTUNE,
         #                                                   deterministic=False).prefetch(tf.data.AUTOTUNE)
 
-    elif data["model"] == "Baidu":
+    elif "baidu" in data["model"].lower():
         train_generator = TransformerTrainFeatureGenerator(feature_type="baidu", window_len=data["window length"],
                                                            stride=data["stride"], base_path=data["dataset path"],
                                                            data_subset="train", cv_iter=cv_iter)
@@ -105,9 +103,9 @@ def train(data, iteration, cv_iter, queue) -> History:
             tf.TensorSpec(shape=(data["window length"], 8576), dtype=tf.float32),
             tf.TensorSpec(shape=(18,), dtype=tf.uint8)
         ))
-        train_generator = train_generator.shuffle(data["batch size"]).batch(data["batch size"],
-                                                                            num_parallel_calls=tf.data.AUTOTUNE,
-                                                                            deterministic=False).prefetch(
+        train_generator = train_generator.shuffle(2000).batch(data["batch size"],
+                                                              num_parallel_calls=tf.data.AUTOTUNE,
+                                                              deterministic=False).prefetch(
             tf.data.AUTOTUNE)
 
         validation_generator = TransformerTrainFeatureGenerator(feature_type="baidu", window_len=data["window length"],
@@ -117,8 +115,10 @@ def train(data, iteration, cv_iter, queue) -> History:
             tf.TensorSpec(shape=(data["window length"], 8576), dtype=tf.float32),
             tf.TensorSpec(shape=(18,), dtype=tf.uint8)
         ))
-        validation_generator = validation_generator.batch(data["batch size"], num_parallel_calls=tf.data.AUTOTUNE,
-                                                          deterministic=False).prefetch(tf.data.AUTOTUNE)
+        validation_generator = validation_generator.batch(data["batch size"],
+                                                          num_parallel_calls=tf.data.AUTOTUNE,
+                                                          deterministic=False).prefetch(
+            tf.data.AUTOTUNE)
 
     history = model.fit(x=train_generator, verbose=1, callbacks=callbacks, epochs=data["epochs"],
                         use_multiprocessing=data["multi proc"],
@@ -142,16 +142,16 @@ def train_for_iterations(data):
     queue = multiprocessing.Queue()
 
     for cv_iter in tqdm(range(data["CV start"], cv_iterations)):
-        best_val_loss = inf
-        best_val_iter = 0
-        train_accuracies = []
-        train_loss = []
-        test_accuracies = []
-        val_accuracies = []
-        val_loss = []
-        train_auc = []
-        val_auc = []
-        epochs = []
+        save_metrics = {}
+        for k in data["train metrics"]:
+            save_metrics[k] = []
+            save_metrics['val_' + k] = []
+        save_metrics["loss"] = []
+        save_metrics["val_loss"] = []
+        save_metrics["epochs"] = []
+        save_metrics["best_val_loss"] = inf
+        save_metrics["best_val_iter"] = 0
+        save_metrics["test a-mAP"] = []
 
         for i in range(data["MC start"], data["MC iterations"]):
             print(f"Starting MC iteration {i + 1}/{data['MC iterations']}, of CV iteration "
@@ -163,46 +163,30 @@ def train_for_iterations(data):
             p.join()
             print("Joined")
 
-            epochs.append(len(history['val_loss']))
+            save_metrics["epochs"].append(len(history['val_loss']))
             index_of_min_validation_loss = argmin(history['val_loss'])
-            train_accuracies.append(history['accuracy'][index_of_min_validation_loss])
-            train_loss.append(history['loss'][index_of_min_validation_loss])
-            val_loss.append(history['val_loss'][index_of_min_validation_loss])
-            val_accuracies.append(history['val_accuracy'][index_of_min_validation_loss])
-            train_auc.append(history['auc'][index_of_min_validation_loss])
-            val_auc.append(history['val_auc'][index_of_min_validation_loss])
+            for k in history.keys():
+                save_metrics[k].append(history[k][index_of_min_validation_loss])
 
-            if min(history['val_loss']) < best_val_loss:
-                best_val_loss = min(history['val_loss'])
-                best_val_iter = i
+            if min(history['val_loss']) < save_metrics["best_val_loss"]:
+                save_metrics["best_val_loss"] = min(history['val_loss'])
+                save_metrics["best_val_iter"] = i
                 load_path = join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}', f'best_{i}.hdf5')
                 save_path = join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}',
                                  f'overall_best.hdf5')
                 shutil.copy(load_path, save_path)
 
             test_accuracy = test_soccernet(data, f'best_{i}.hdf5', cv_iter=cv_iter)
-            test_accuracies.append(test_accuracy)
+            save_metrics["test a-mAP"].append(test_accuracy)
 
-        to_save = {
-            "train acc": mean(train_accuracies),
-            "train acc std": std(train_accuracies),
-            "train loss": mean(train_loss),
-            "train loss std": std(train_loss),
-            "train auc": mean(train_auc),
-            "train auc std": std(train_auc),
-            "test acc": mean(test_accuracies),
-            "test acc std": std(test_accuracies),
-            "valid acc": mean(val_accuracies),
-            "valid acc std": std(val_accuracies),
-            "valid loss": mean(val_loss),
-            "valid loss std": std(val_loss),
-            "valid auc": mean(val_auc),
-            "valid auc std": std(val_auc),
-            "epochs": mean(epochs),
-            "epochs std": std(epochs),
-            "best valid loss": best_val_loss,
-            "best iter": best_val_iter
-        }
+        to_save = {}
+        for k in save_metrics.keys():
+            if "best" not in k:
+                to_save[k] = mean(save_metrics[k])
+                to_save[k + ' std'] = std(save_metrics[k])
+            else:
+                to_save[k] = save_metrics[k]
+
         os.makedirs(join('models', "SoccerNet", data["model"], "results", "CV"), exist_ok=True)
         with open(join('models', "SoccerNet", data["model"], "results", "CV", f'avg_metrics_cv{cv_iter}.json'),
                   'w') as f:
@@ -240,6 +224,8 @@ if __name__ == '__main__':
     with open("config.json", "r") as jsonfile:
         data = json.load(jsonfile)
 
+    data = get_config(data)
+
     setup_environment(data)
 
     train_for_iterations(data)
@@ -251,6 +237,6 @@ if __name__ == '__main__':
 
     test_soccernet(data, cv_iter=metrics["best cv iter"])
 
-    plot_train_history(arch=data["model"], dataset="SoccerNet")
-    save_train_latex_table(dataset="SoccerNet")
-    save_test_latex_table(dataset="SoccerNet")
+    plot_train_history(data)
+    save_train_latex_table(data)
+    save_test_latex_table(data)

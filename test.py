@@ -4,10 +4,7 @@ import zipfile
 
 from SoccerNet.Evaluation.utils import INVERSE_EVENT_DICTIONARY_V2
 from keras.models import load_model
-from keras_nlp.layers import TransformerEncoder
-from keras_transformer import get_custom_objects
-
-from util import release_gpu_memory, get_cv_data
+from util import release_gpu_memory, get_cv_data, get_custom_objects
 from data_generator import SoccerNetTestVideoGenerator
 from numpy import argmax, minimum, maximum, transpose, copy, load, array
 from SoccerNet.Evaluation.ActionSpotting import evaluate

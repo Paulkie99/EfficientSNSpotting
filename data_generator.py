@@ -1,7 +1,8 @@
+import random
 from multiprocessing import Pool, cpu_count
 import h5py
 from tensorflow.keras.utils import Sequence
-from numpy import ceil, single, zeros, reshape, divide, load, array, clip, array_split, uint8, delete
+from numpy import ceil, single, zeros, reshape, divide, load, array, clip, array_split, uint8, delete, where
 from numpy import sum as np_sum
 from numpy.random import randint, choice
 from os.path import join
@@ -249,7 +250,7 @@ class SoccerNetTrainVideoDataGenerator(Sequence, SoccerNetTrainDataset):
 
 class TransformerTrainFeatureGenerator:
     def __init__(self, window_len: int = 7, stride: int = 7, base_path: str = "E:\\SoccerNet",
-                 feature_type: str = "baidu", data_subset: str = "train", extraction_window=5,
+                 feature_type: str = "baidu", data_subset: str = "train", extraction_window=1,
                  extraction_stride: int = 1, cv_iter=0):
         self.window_len = window_len
         self.stride = stride
@@ -262,17 +263,89 @@ class TransformerTrainFeatureGenerator:
             for half in range(1, 3):
                 self.feature_paths.append((join(self.base_path, vid), f"{half}"))
         self.feature_paths = shuffle(self.feature_paths)
+        self.replays = []
+        for i in range(len(self.feature_paths)):
+            self.replays.append(self.get_replays(i))
         self.num_classes = 17
         self.label_file = "Labels-v2.json"
         self.dict_event = EVENT_DICTIONARY_V2
         self.extractor_win = extraction_window
-        self.extractor_stride = extraction_stride  # assumed
+        self.extractor_stride = extraction_stride
 
     def __data_generation(self, index):
         X = load(join(self.feature_paths[index][0], self.feature_paths[index][1] + "_" + self.feature_type))
-        Y = zeros((X.shape[0], self.num_classes + 1))
-        Y[:, 0] = 1
 
+        frames_per_sample = self.window_len
+        # if self.stride == self.window_len:
+        #     num_to_discard = X.shape[0] % frames_per_sample
+        #     if num_to_discard > 0:
+        #         X = X[:-num_to_discard, ...]
+        #     assert X.shape[0] % frames_per_sample == 0
+        #     num_samples = X.shape[0] // frames_per_sample
+        #     X = reshape(array_split(X, num_samples), (num_samples, frames_per_sample, -1))
+        # elif self.stride < self.window_len:
+        temp = []
+        num_chunks = (X.shape[0] - (frames_per_sample - self.stride)) // self.stride
+        for chunk in range(num_chunks):
+            temp.append(X[chunk * self.stride: chunk * self.stride + self.window_len, ...])
+        X = array(temp)
+
+        Y = zeros((X.shape[0], 18))
+        Y[:, 0] = 1
+        labels = json.load(open(join(self.feature_paths[index][0], "Labels-v2.json")))
+        for annotation in labels["annotations"]:
+            # if annotation["visibility"] == "not shown":
+            #     continue
+            time = annotation["gameTime"]
+            read_half = time[0]
+            if read_half != self.feature_paths[index][1]:
+                continue
+            event = annotation["label"]
+            if event not in self.dict_event:
+                continue
+            minutes = int(time[-5:-3])
+            seconds = int(time[-2::])
+            t_seconds = seconds + 60 * minutes  # time of event in seconds
+
+            if t_seconds // self.window_len >= X.shape[0]:
+                # print(f"{t_seconds} out of bounds for vid with {X.shape[0]} samples")
+                continue
+
+            # if t_seconds <= self.extractor_win - self.extractor_stride:
+            #     f_index = 0
+            #     rest = t_seconds + 1
+            # else:
+            #     f_index = (t_seconds - (self.extractor_win - self.extractor_stride)) // self.extractor_stride - 1
+            #     rest = (self.extractor_win - self.extractor_stride) // self.extractor_stride + 2
+            # f_index = max(t_seconds - 1, 0)
+            # rest = 1
+
+            label = self.dict_event[event]  # event label
+            indices = clip([t_seconds - self.extractor_win,
+                            t_seconds,
+                            t_seconds + self.extractor_win], 0, (Y.shape[0] - 1) * self.window_len)
+            Y[indices // self.window_len, label + 1] = 1
+            Y[indices // self.window_len, 0] = 0
+
+        for replay in self.replays[index]:
+            start, end, half = replay[0], replay[1], replay[2]
+
+            X = delete(X, list(range(start // self.window_len, end // self.window_len + 1)), axis=0)
+            Y = delete(Y, list(range(start // self.window_len, end // self.window_len + 1)), axis=0)
+
+        delete_candidates = where(Y[:, 0] == 1)[0]
+        desired_num_bg = int((X.shape[0] - len(delete_candidates)) / 17)
+        delete_candidates = choice(delete_candidates, size=len(delete_candidates) - desired_num_bg,
+                                   replace=False)
+        X = delete(X, delete_candidates, axis=0)
+        Y = delete(Y, delete_candidates, axis=0)
+
+        if self.data_subset == "test":
+            return X
+        else:
+            return X, Y
+
+    def get_replays(self, index):
         camera_labels = json.load(open(join(self.feature_paths[index][0], "Labels-cameras.json")))
         replays = []
         for annotation in enumerate(camera_labels["annotations"]):
@@ -290,75 +363,7 @@ class TransformerTrainFeatureGenerator:
             seconds = int(time[-2::])
             end = seconds + 60 * minutes  # time of event in seconds
             replays.append((start, end, read_half))
-
-        labels = json.load(open(join(self.feature_paths[index][0], "Labels-v2.json")))
-        for annotation in labels["annotations"]:
-            # if annotation["visibility"] == "not shown":
-            #     continue
-            time = annotation["gameTime"]
-            read_half = time[0]
-            if read_half != self.feature_paths[index][1]:
-                continue
-            event = annotation["label"]
-            if event not in self.dict_event:
-                continue
-            minutes = int(time[-5:-3])
-            seconds = int(time[-2::])
-            t_seconds = seconds + 60 * minutes  # time of event in seconds
-
-            if t_seconds <= self.extractor_win - self.extractor_stride:
-                f_index = 0
-                rest = max(t_seconds // self.extractor_stride, 1) + 1
-            else:
-                f_index = (t_seconds - (self.extractor_win - self.extractor_stride)) // self.extractor_stride - 1
-                rest = (self.extractor_win - self.extractor_stride) // self.extractor_stride + 2
-
-            label = self.dict_event[event]  # event label
-
-            Y[f_index: f_index + rest, label + 1] = 1
-            Y[f_index: f_index + rest, 0] = 0
-
-        frames_per_sample = self.window_len
-        if self.stride == self.window_len:
-            num_to_discard = X.shape[0] % frames_per_sample
-            if num_to_discard > 0:
-                X = X[:-num_to_discard, ...]
-                Y = Y[:-num_to_discard, ...]
-            assert X.shape[0] % frames_per_sample == 0
-            num_samples = X.shape[0] // frames_per_sample
-            X = reshape(array_split(X, num_samples), (num_samples, frames_per_sample, -1))
-            Y = clip(
-                np_sum(reshape(array_split(Y, num_samples), (num_samples, frames_per_sample, self.num_classes + 1)),
-                       axis=1), 0, 1)
-        elif self.stride < self.window_len:
-            temp = []
-            temp_y = []
-            num_chunks = (X.shape[0] - (frames_per_sample - self.stride)) // self.stride
-            for chunk in range(num_chunks):
-                temp.append(X[chunk * self.stride: chunk * self.stride + self.window_len, ...])
-                temp_y.append(
-                    clip(np_sum(Y[chunk * self.stride: chunk * self.stride + self.window_len, ...], axis=0), 0,
-                         1))
-            X = array(temp)
-            Y = array(temp_y)
-
-        for row in range(Y.shape[0]):
-            if any(Y[row, 1:] == 1):
-                Y[row, 0] = 0
-
-        for replay in replays:
-            start, end, half = replay[0], replay[1], replay[2]
-            f_index = (start - (self.extractor_win - self.extractor_stride)) // self.extractor_stride
-            l_index = (end - (self.extractor_win - self.extractor_stride)) // self.extractor_stride
-            rest = (self.extractor_win - self.extractor_stride) // self.extractor_stride
-
-            X = delete(X, list(range(f_index, l_index + rest + 1)), axis=0)
-            Y = delete(Y, list(range(f_index, l_index + rest + 1)), axis=0)
-
-        if self.data_subset == "test":
-            return X
-        else:
-            return shuffle(X, Y)
+        return replays
 
     def __call__(self, *args, **kwargs):
         for i in range(len(self.feature_paths)):

@@ -57,7 +57,7 @@ def get_config(data):
         if isConfigEqual(data, config_list["configs"][config]):
             data["model"] = config_list["configs"][config]["model"]
             return data
-    data["model"] = data["model"] + ' ' + str(len(config_list))
+    data["model"] = data["model"] + ' ' + str(len(config_list["configs"]))
     config_list["configs"].append(data)
     with open(path, 'w') as f:
         json.dump(config_list, f, indent=4)

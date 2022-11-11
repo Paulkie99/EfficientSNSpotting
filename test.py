@@ -57,15 +57,15 @@ def test_soccernet(data, model_name: str = 'overall_best.hdf5', cv_iter: int = 0
     games = get_cv_data("test", cv_iter)
     
     if "baidu" in data["model"].lower():        
-        train_generator = TransformerTrainFeatureGenerator(data["window length"], data["test stride"], data["dataset path"],
+        generator = TransformerTrainFeatureGenerator(data["window length"], data["test stride"], data["dataset path"],
                  "baidu", "test", 1, 1, cv_iter, data["feature fps"])
-        train_generator = tf.data.Dataset.from_generator(train_generator, output_signature=(
+        train_generator = tf.data.Dataset.from_generator(generator, output_signature=(
             tf.TensorSpec(shape=(data["window length"], 8576), dtype=tf.float32)
         ))
         train_generator = train_generator.cache().prefetch(tf.data.AUTOTUNE)
         
         for vid in enumerate(games):
-            assert os.path.join(data["dataset path"], vid[1]) == train_generator.feature_paths[0][0]
+            assert os.path.join(data["dataset path"], vid[1]) == generator.feature_paths[0][0]
         
         all_pred_y = model.predict(x=train_generator)[:, 1:]
         

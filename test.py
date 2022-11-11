@@ -53,30 +53,42 @@ def test_soccernet(data, model_name: str = 'overall_best.hdf5', cv_iter: int = 0
                        custom_objects=get_custom_objects())
 
     games = get_cv_data("test", cv_iter)
-
-    for game in tqdm(games):
+    
+    if "baidu" in data["model"].lower():        
+        train_generator = TransformerTrainFeatureGenerator(data["window length"], data["test stride"], data["dataset path"],
+                 "baidu", "test", 1, 1, cv_iter, data["feature fps"])
+        train_generator = tf.data.Dataset.from_generator(train_generator, output_signature=(
+            tf.TensorSpec(shape=(data["window length"], 8576), dtype=tf.float32)
+        ))
+        train_generator = train_generator.cache().prefetch(tf.data.AUTOTUNE)
+        
+        [assert vid == train_generator.feature_paths[0] for vid in games]
+        
+        all_pred_y = model.predict(x=train_generator)[:, 1:]
+        
+        assert all_pred_y.shape[0] == 2 * len(games)
+        
+        del train_generator
+        release_gpu_memory()
+        
+    for game in tqdm(enumerate(games)):
         json_data = dict()
-        json_data["UrlLocal"] = game
+        json_data["UrlLocal"] = game[1]
         json_data["predictions"] = list()
         for half in range(2):
             if "resnet" in data["model"].lower():
-                train_generator = SoccerNetTestVideoGenerator(game, half + 1, data["batch size"], data["dataset path"],
+                train_generator = SoccerNetTestVideoGenerator(game[1], half + 1, data["batch size"], data["dataset path"],
                                                               data["feature fps"], data["window length"],
                                                               data["test stride"], data["frame dims"],
                                                               data["resize method"])
-            elif "baidu" in data["model"].lower():
-                train_generator = load(
-                    os.path.join(data["dataset path"], game, f"{half + 1}_baidu_soccer_embeddings.npy"))
-                temp = []
-                num_chunks = (train_generator.shape[0] - (data["window length"] - data["test stride"])) // data[
-                    "test stride"]
-                for chunk in range(num_chunks):
-                    temp.append(train_generator[
-                                chunk * data["test stride"]: chunk * data["test stride"] + data["window length"], ...])
-                train_generator = array(temp)
 
-            pred_y = model.predict(x=train_generator, verbose=1, workers=data["workers"],
-                                   use_multiprocessing=data["multi proc"], max_queue_size=data["queue size"])[:, 1:]
+                pred_y = model.predict(x=train_generator, verbose=1, workers=data["workers"],
+                                       use_multiprocessing=data["multi proc"], max_queue_size=data["queue size"])[:, 1:]
+                
+                del train_generator
+                release_gpu_memory()
+            elif "baidu" in data["model"].lower():
+                pred_y = all_pred_y[2 * game[0] + half, ...]
 
             for class_label in range(17):
                 spots = get_spot_from_NMS(pred_y[:, class_label], 20 // data["test stride"])
@@ -96,18 +108,16 @@ def test_soccernet(data, model_name: str = 'overall_best.hdf5', cv_iter: int = 0
                     prediction_data["confidence"] = str(confidence)
                     json_data["predictions"].append(prediction_data)
 
-            del train_generator
-            release_gpu_memory()
-
-        os.makedirs(os.path.join(path, "outputs_test", game), exist_ok=True)
-        if os.path.exists(os.path.join(path, "outputs_test", game, "results_spotting.json")):
-            os.remove(os.path.join(path, "outputs_test", game, "results_spotting.json"))
-        with open(os.path.join(path, "outputs_test", game, "results_spotting.json"),
+        os.makedirs(os.path.join(path, "outputs_test", game[1]), exist_ok=True)
+        if os.path.exists(os.path.join(path, "outputs_test", game[1], "results_spotting.json")):
+            os.remove(os.path.join(path, "outputs_test", game[1], "results_spotting.json"))
+        with open(os.path.join(path, "outputs_test", game[1], "results_spotting.json"),
                   'w') as output_file:
             json.dump(json_data, output_file, indent=4)
 
     del model
     release_gpu_memory()
+    [os.remove(path) for path in glob.glob("*test_cache*")]
 
     # zip folder
     # zipResults(zip_path=os.path.join("models", "SoccerNet", data["model"], f"results_spotting_test.zip"),

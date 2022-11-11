@@ -47,18 +47,20 @@ from tensorflow.config.optimizer import set_jit
 
 
 def get_config(data):
-    path = "configs.npy"
+    path = "all_configs.json"
     if exists(path):
-        config_list = load(path, allow_pickle=True)
+        with open(path, 'r') as f:
+            config_list = json.load(f)
     else:
         config_list = []
-    for config in range(len(config_list)):
-        if isConfigEqual(data, config_list[config]):
-            data["model"] = data["model"] + ' ' + str(config)
+    for config in range(len(config_list["configs"])):
+        if isConfigEqual(data, config_list["configs"][config]):
+            data["model"] = config_list["configs"][config]["model"]
             return data
     data["model"] = data["model"] + ' ' + str(len(config_list))
-    append(config_list, data)
-    save(path, config_list)
+    config_list["configs"].append(data)
+    with open(path, 'w') as f:
+        json.dump(config_list, f, indent=4)
     return data
 
 

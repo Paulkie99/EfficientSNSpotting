@@ -52,7 +52,7 @@ def get_config(data):
         with open(path, 'r') as f:
             config_list = json.load(f)
     else:
-        config_list = []
+        config_list = {"configs": []}
     for config in range(len(config_list["configs"])):
         if isConfigEqual(data, config_list["configs"][config]):
             data["model"] = config_list["configs"][config]["model"]

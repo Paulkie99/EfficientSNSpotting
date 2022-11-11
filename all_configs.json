@@ -1,0 +1,40 @@
+{
+    "configs": [
+        {
+            "model": "Baidu test 1",
+            "model params": {},
+            "MC iterations": 2,
+            "MC start": 0,
+            "CV iterations": true,
+            "CV start": 0,
+            "learning rate": 0.0005,
+            "decay": 0,
+            "batch size": 128,
+            "dataset path": "F:\\SoccerNet",
+            "epochs": 1,
+            "feature fps": 1.0,
+            "frame dims": [
+                224,
+                398
+            ],
+            "resize method": "",
+            "window length": 7,
+            "stride": 7,
+            "test stride": 1,
+            "patience": 10,
+            "saved model": "",
+            "init epoch": 0,
+            "jit": true,
+            "append training logs": false,
+            "multi proc": true,
+            "workers": 6,
+            "queue size": 15,
+            "train metrics": [
+                "auc",
+                "precision",
+                "accuracy",
+                "recall"
+            ]
+        }
+    ]
+}

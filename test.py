@@ -68,6 +68,7 @@ def test_soccernet(data, model_name: str = 'overall_best.hdf5', cv_iter: int = 0
         
         assert all_pred_y.shape[0] == 2 * len(games)
         
+        [os.remove(path) for path in glob.glob("*test_cache*")]
         del train_generator
         release_gpu_memory()
         
@@ -117,7 +118,6 @@ def test_soccernet(data, model_name: str = 'overall_best.hdf5', cv_iter: int = 0
 
     del model
     release_gpu_memory()
-    [os.remove(path) for path in glob.glob("*test_cache*")]
 
     # zip folder
     # zipResults(zip_path=os.path.join("models", "SoccerNet", data["model"], f"results_spotting_test.zip"),

@@ -1,7 +1,7 @@
 {
     "configs": [
         {
-            "model": "Baidu test 1",
+            "model": "Baidu test 0",
             "model params": {},
             "MC iterations": 2,
             "MC start": 0,
@@ -34,7 +34,9 @@
                 "precision",
                 "accuracy",
                 "recall"
-            ]
+            ],
+            "NMS window": 20,
+            "NMS threshold": 0.5
         }
     ]
 }

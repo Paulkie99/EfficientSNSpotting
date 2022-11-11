@@ -55,52 +55,51 @@ def test_soccernet(data, model_name: str = 'overall_best.hdf5', cv_iter: int = 0
                        custom_objects=get_custom_objects())
 
     games = get_cv_data("test", cv_iter)
-    
-    if "baidu" in data["model"].lower():        
+    if "resnet" in data["model"].lower():
+        # TODO change test generator
+        pass
+        # train_generator = SoccerNetTestVideoGenerator(game[1], half + 1, data["batch size"], data["dataset path"],
+        #                                               data["feature fps"], data["window length"],
+        #                                               data["test stride"], data["frame dims"],
+        #                                               data["resize method"])
+
+    elif "baidu" in data["model"].lower():
         generator = TransformerTrainFeatureGenerator(data["window length"], data["test stride"], data["dataset path"],
-                 "baidu", "test", 1, 1, cv_iter, data["feature fps"])
+                                                     "baidu", "test", 1, 1, cv_iter, data["feature fps"])
         train_generator = tf.data.Dataset.from_generator(generator, output_signature=(
-            tf.TensorSpec(shape=(data["window length"], 8576), dtype=tf.float32)
+            tf.TensorSpec(shape=(None, data["window length"], 8576), dtype=tf.float32)
         ))
-        train_generator = train_generator.cache().prefetch(tf.data.AUTOTUNE)
-        
+        train_generator = train_generator.prefetch(tf.data.AUTOTUNE)
+
         for vid in enumerate(games):
-            assert os.path.join(data["dataset path"], vid[1]) == generator.feature_paths[0][0]
-        
-        all_pred_y = model.predict(x=train_generator)[:, 1:]
-        
-        assert all_pred_y.shape[0] == 2 * len(games)
-        
-        [os.remove(path) for path in glob.glob("*test_cache*")]
-        del train_generator
-        release_gpu_memory()
-        
+            assert os.path.join(data["dataset path"], vid[1]) == generator.feature_paths[2 * vid[0]][0]
+
+    all_pred_y = []
+    for x in train_generator:
+        all_pred_y.append(model.predict(x=x)[:, 1:])
+
+    assert len(all_pred_y) == 200
+
+    del model
+    del train_generator
+    release_gpu_memory()
+
     for game in tqdm(enumerate(games)):
         json_data = dict()
         json_data["UrlLocal"] = game[1]
         json_data["predictions"] = list()
         for half in range(2):
-            if "resnet" in data["model"].lower():
-                train_generator = SoccerNetTestVideoGenerator(game[1], half + 1, data["batch size"], data["dataset path"],
-                                                              data["feature fps"], data["window length"],
-                                                              data["test stride"], data["frame dims"],
-                                                              data["resize method"])
-
-                pred_y = model.predict(x=train_generator, verbose=1, workers=data["workers"],
-                                       use_multiprocessing=data["multi proc"], max_queue_size=data["queue size"])[:, 1:]
-                
-                del train_generator
-                release_gpu_memory()
-            elif "baidu" in data["model"].lower():
-                pred_y = all_pred_y[2 * game[0] + half, ...]
+            pred_y = all_pred_y[2 * game[0] + half]
 
             for class_label in range(17):
-                spots = get_spot_from_NMS(pred_y[:, class_label], 20 // data["test stride"])
+                spots = get_spot_from_NMS(pred_y[:, class_label],
+                                          (data["NMS window"] * data["feature fps"]) // data["test stride"],
+                                          data["NMS threshold"])
                 for spot in spots:
                     confidence = spot[1]
 
                     frame_index = spot[0]
-                    total_seconds = frame_index * data["test stride"] + data["window length"] / 2
+                    total_seconds = (frame_index * data["test stride"] + data["window length"] / 2) / data["feature fps"]
                     seconds = int(total_seconds % 60)
                     minutes = int(total_seconds // 60)
 
@@ -118,14 +117,6 @@ def test_soccernet(data, model_name: str = 'overall_best.hdf5', cv_iter: int = 0
         with open(os.path.join(path, "outputs_test", game[1], "results_spotting.json"),
                   'w') as output_file:
             json.dump(json_data, output_file, indent=4)
-
-    del model
-    release_gpu_memory()
-
-    # zip folder
-    # zipResults(zip_path=os.path.join("models", "SoccerNet", data["model"], f"results_spotting_test.zip"),
-    #            target_dir=os.path.join("models", "SoccerNet", data["model"], "outputs_test"),
-    #            filename="results_spotting.json")
 
     results = evaluate(SoccerNet_path=data["dataset path"],
                        Predictions_path=os.path.join(path, "outputs_test"),

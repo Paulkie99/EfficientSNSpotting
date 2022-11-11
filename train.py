@@ -97,6 +97,9 @@ def train(data, iteration, cv_iter, queue) -> History:
         #                                                   deterministic=False).prefetch(tf.data.AUTOTUNE)
 
     elif "baidu" in data["model"].lower():
+        [os.remove(path) for path in glob.glob("*train_cache*")]
+        [os.remove(path) for path in glob.glob("*valid_cache*")]
+
         train_generator = TransformerTrainFeatureGenerator(feature_type="baidu", window_len=data["window length"],
                                                            stride=data["stride"], base_path=data["dataset path"],
                                                            data_subset="train", cv_iter=cv_iter,
@@ -221,9 +224,9 @@ def train_for_iterations(data):
                 cv_avg_metrics[k] = std(cv_avg_metrics[k])
         elif "best" not in k:
             cv_avg_metrics[k] = mean(cv_avg_metrics[k])
-    cv_avg_metrics["best cv iter"] = int(argmin(cv_avg_metrics["best valid loss"]))
-    cv_avg_metrics["best iter"] = cv_avg_metrics["best iter"][cv_avg_metrics["best cv iter"]]
-    cv_avg_metrics["best valid loss"] = cv_avg_metrics["best valid loss"][cv_avg_metrics["best cv iter"]]
+    cv_avg_metrics["best cv iter"] = int(argmin(cv_avg_metrics["best_val_loss"]))
+    cv_avg_metrics["best iter"] = cv_avg_metrics["best_val_iter"][cv_avg_metrics["best cv iter"]]
+    cv_avg_metrics["best valid loss"] = cv_avg_metrics["best_val_loss"][cv_avg_metrics["best cv iter"]]
 
     with open(join('models', "SoccerNet", data["model"], "results", "CV", f'avg_metrics_all_cv.json'), 'w') as f:
         json.dump(cv_avg_metrics, f, indent=4)
@@ -236,21 +239,6 @@ if __name__ == '__main__':
     data = get_config(data)
 
     setup_environment(data)
-
-    # train_generator = TransformerTrainFeatureGenerator(feature_type="baidu", window_len=data["window length"],
-    #                                                    stride=data["stride"], base_path=data["dataset path"],
-    #                                                    data_subset="train", cv_iter=0,
-    #                                                    fps=data["feature fps"])
-    # train_generator = tf.data.Dataset.from_generator(train_generator, output_signature=(
-    #     tf.TensorSpec(shape=(data["window length"], 8576), dtype=tf.float32),
-    #     tf.TensorSpec(shape=(18,), dtype=tf.uint8)
-    # ))
-    # train_generator = train_generator.shuffle(2000).batch(data["batch size"],
-    #                                                       num_parallel_calls=tf.data.AUTOTUNE,
-    #                                                       deterministic=False).prefetch(
-    #     tf.data.AUTOTUNE)
-    #
-    # results = [(x, y) for x, y in train_generator]
 
     train_for_iterations(data)
 

@@ -20,7 +20,8 @@ def plot_train_history(data):
         f.close()
 
     indices = []
-    for k in data["train metrics"] + 'loss':
+    metrics = data["train metrics"] + ['loss']
+    for k in metrics:
         indices.append(where(array(data_rows[0].split(',')) == k)[0][0])
         indices.append(where(array(data_rows[0].split(',')) == 'val_' + k)[0][0])
     data_rows.pop(0)
@@ -39,9 +40,10 @@ def plot_train_history(data):
     for i in range(0, len(indices), 2):
         plt.plot(lists[i], marker='.', markersize=4, linestyle='--')
         plt.plot(lists[i + 1], marker='.', markersize=4, linestyle='--')
-        plt.title(f'model {data["train metrics"][i // 2]}')
-        plt.ylabel(data["train metrics"][i // 2])
+        plt.title(f"model {metrics[i // 2]}")
+        plt.ylabel(metrics[i // 2])
         plt.xlabel('epoch')
         plt.legend(['train', 'validation'], loc='upper right')
-        plt.savefig(os.path.join(save_path, f"{data['train metrics'][i // 2]}.png"), bbox_inches='tight', dpi=300)
+        plt.savefig(os.path.join(save_path, f"{metrics[i // 2]}.png"), bbox_inches='tight',
+                    dpi=300)
         plt.close()

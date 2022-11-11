@@ -65,7 +65,7 @@ def get_config(data):
 
 
 def isConfigEqual(conf1, conf2):
-    if conf1["model"].split(' ')[:-1] != conf2["model"].split(' ')[:-1]:
+    if conf1["model"].split(' ') != conf2["model"].split(' ')[:-1]:
         return False
     if conf1["CV iterations"] != conf2["CV iterations"]:
         return False
@@ -90,6 +90,10 @@ def isConfigEqual(conf1, conf2):
     if conf1["stride"] != conf2["stride"]:
         return False
     if conf1["patience"] != conf2["patience"]:
+        return False
+    if conf1["NMS window"] != conf2["NMS window"]:
+        return False
+    if conf1["NMS threshold"] != conf2["NMS threshold"]:
         return False
 
     return True
@@ -254,7 +258,7 @@ def resize(frames, method, frame_dims):
 def save_train_latex_table(data_):
     base_len = len(join("models", "SoccerNet")) + 1
     headers = ['Model']
-    metrics = data_["train metrics"] + 'loss'
+    metrics = data_["train metrics"] + ['loss']
 
     data = []
     for i in metrics:
@@ -268,11 +272,10 @@ def save_train_latex_table(data_):
                 with open(path, 'r') as f:
                     jdata = json.load(f)
                     headers.append(f'{path[base_len:-len(file) - len("results") - len("CV") - 3]}')
-                    data[0].append(f'{jdata["train acc"]:.4f} \u00B1 {jdata["train acc std"]:.4f}')
                     for i in range(len(metrics)):
-                        data[i].append(f"{jdata[metrics[i]]:.4f} \u00B1 {jdata[metrics[i] + ' std']:.4f}")
-                        data[i].append(
-                            f"{'val_' + jdata[metrics[i]]:.4f} \u00B1 {'val_' + jdata[metrics[i] + ' std']:.4f}")
+                        data[2 * i].append(f"{jdata[metrics[i]]:.4f} \u00B1 {jdata[metrics[i] + ' std']:.4f}")
+                        data[2 * i + 1].append(
+                            f"{jdata[f'val_{metrics[i]}']:.4f} \u00B1 {jdata[f'val_{metrics[i]} std']:.4f}")
 
                     data[-2].append(f"{jdata['test a-mAP']:.4f} \u00B1 {jdata['test a-mAP std']:.4f}")
                     data[-1].append(f"{jdata['epochs']:.4f} \u00B1 {jdata['epochs std']:.4f}")

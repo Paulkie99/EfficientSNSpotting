@@ -130,8 +130,6 @@ dmypy.json
 
 .idea/
 
-models/
-
 configs.npy
 
 *.tempstate11364277895008578207
@@ -143,3 +141,9 @@ configs.npy
 *.index
 
 train_cache_0.data-00000-of-00001.tempstate953958391476712672
+
+**/outputs_test/
+
+**/tensorboard/
+
+*.hdf5

@@ -24,5 +24,7 @@
     "multi proc": true,
     "workers": 6,
     "queue size": 15,
-    "train metrics": ["auc", "precision", "accuracy", "recall"]
+    "train metrics": ["auc", "precision", "accuracy", "recall"],
+    "NMS window": 20,
+    "NMS threshold": 0.5
 }

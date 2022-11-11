@@ -287,12 +287,6 @@ class TransformerTrainFeatureGenerator:
         idx = clip(idx, 0, X.shape[0] - 1)
         X = X[idx, ...]
 
-        # temp = []
-        # num_chunks = (X.shape[0] - (self.window_len - self.stride)) // self.stride
-        # for chunk in range(num_chunks):
-        #     temp.append(X[chunk * self.stride: chunk * self.stride + self.window_len, ...])
-        # X = array(temp)
-
         if self.data_subset != "test":
             Y = zeros((X.shape[0], 18))
             Y[:, 0] = 1
@@ -313,17 +307,7 @@ class TransformerTrainFeatureGenerator:
                 frame = int(self.fps * t_seconds)
 
                 if frame // self.window_len >= X.shape[0]:
-                    # print(f"{t_seconds} out of bounds for vid with {X.shape[0]} samples")
                     continue
-
-                # if t_seconds <= self.extractor_win - self.extractor_stride:
-                #     f_index = 0
-                #     rest = t_seconds + 1
-                # else:
-                #     f_index = (t_seconds - (self.extractor_win - self.extractor_stride)) // self.extractor_stride - 1
-                #     rest = (self.extractor_win - self.extractor_stride) // self.extractor_stride + 2
-                # f_index = max(t_seconds - 1, 0)
-                # rest = 1
 
                 label = self.dict_event[event]  # event label
                 # indices = clip([(t_seconds - self.extractor_win) * self.fps

@@ -178,7 +178,8 @@ def check_extract_soccernet_frames():
 
                 assert abs(frames.shape[0] - ceil(cap.reader.nframes / 8)) <= 1
 
-            with h5py.File(join("E:\\SoccerNet", vid, f"{half}_frames.h5"), 'w') as h5f:
+            os.makedirs(join("H:\\SoccerNet", vid), exist_ok=True)
+            with h5py.File(join("H:\\SoccerNet", vid, f"{half}_frames.h5"), 'w') as h5f:
                 h5f.create_dataset('soccernet_3_125_fps', data=frames)
 
 
@@ -481,7 +482,7 @@ class PositionalEmbedding(Layer):
 
 def get_custom_objects():
     ret = {'PositionalEmbedding': PositionalEmbedding, 'TransformerEncoder': TransformerEncoder,
-          'SinePositionEncoding': SinePositionEncoding}
+           'SinePositionEncoding': SinePositionEncoding}
     for k, v in keras_transformer.get_custom_objects().items():
         ret[k] = v
     return ret
@@ -543,9 +544,10 @@ def create_model(data):
 
     return model_
 
-# if __name__ == '__main__':
-# delete_soccernet_frames()
-# check_extract_soccernet_frames()
+
+if __name__ == '__main__':
+    # delete_soccernet_frames()
+    check_extract_soccernet_frames()
 # for game in tqdm(getListGames(["train", "valid", "test"])):
 #     source_path = join("E:\\SoccerNet", game)
 #     dest_path = join("F:\\SoccerNet", game)

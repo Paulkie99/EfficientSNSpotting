@@ -1,17 +1,17 @@
 {
     "configs": [
         {
-            "model": "Baidu test 0",
+            "model": "Baidu no cv 1 mc 0",
             "model params": {},
-            "MC iterations": 2,
+            "MC iterations": 1,
             "MC start": 0,
-            "CV iterations": true,
+            "CV iterations": false,
             "CV start": 0,
             "learning rate": 0.0005,
             "decay": 0,
-            "batch size": 128,
+            "batch size": 256,
             "dataset path": "F:\\SoccerNet",
-            "epochs": 1,
+            "epochs": 50,
             "feature fps": 1.0,
             "frame dims": [
                 224,

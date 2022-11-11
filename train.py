@@ -56,8 +56,8 @@ def train(data, iteration, cv_iter, queue) -> History:
 
     # Tensorboard
     log_dir = join("models", "SoccerNet", data["model"], 'tensorboard', f'{cv_iter}')
-    tboard_callback = TensorBoard(log_dir=log_dir)
-    # profile_batch='10,129')
+    tboard_callback = TensorBoard(log_dir=log_dir,
+                                  profile_batch='200,300')
 
     callbacks = [best_checkpointer, csv_logger, early_stopper, tboard_callback]
 
@@ -179,17 +179,20 @@ def train_for_iterations(data):
             for k in history.keys():
                 save_metrics[k].append(history[k][index_of_min_validation_loss])
 
+            test_accuracy = test_soccernet(data, f'best_{i}.hdf5', cv_iter=cv_iter)
+            save_metrics["test a-mAP"].append(test_accuracy)
+
             if min(history['val_loss']) < save_metrics["best_val_loss"]:
                 save_metrics["best_val_loss"] = min(history['val_loss'])
                 save_metrics["best_val_iter"] = i
-                load_path = join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}', f'best_{i}.hdf5')
-                save_path = join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}',
-                                 f'overall_best.hdf5')
-                shutil.copy(load_path, save_path)
-
-            test_accuracy = test_soccernet(data, f'best_{i}.hdf5', cv_iter=cv_iter)
-            save_metrics["test a-mAP"].append(test_accuracy)
-            os.remove(join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}', f'best_{i}.hdf5'))
+                # load_path = join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}', f'best_{i}.hdf5')
+                # save_path = join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}',
+                #                  f'overall_best.hdf5')
+                # shutil.copy(load_path, save_path)
+                os.rename(join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}', f'best_{i}.hdf5'),
+                          join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}', f'overall_best.hdf5'))
+            else:
+                os.remove(join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}', f'best_{i}.hdf5'))
 
         to_save = {}
         for k in save_metrics.keys():

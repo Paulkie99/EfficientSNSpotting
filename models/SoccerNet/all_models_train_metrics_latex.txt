@@ -1,18 +1,18 @@
 \begin{tabular}{ll}
 \hline
- Model                & Baidu test 0    \\
+ Model                & Baidu no cv 1 mc 0   \\
 \hline
- Training Auc         & 0.5015 ± 0.0011 \\
- Validation Auc       & 0.5000 ± 0.0000 \\
- Training Precision   & 0.7364 ± 0.0041 \\
- Validation Precision & 0.7551 ± 0.0000 \\
- Training Accuracy    & 0.7499 ± 0.0008 \\
- Validation Accuracy  & 0.7551 ± 0.0000 \\
- Training Recall      & 0.7025 ± 0.0043 \\
- Validation Recall    & 0.7296 ± 0.0000 \\
- Training Loss        & 0.1454 ± 0.0070 \\
- Validation Loss      & 0.1061 ± 0.0017 \\
- Test a-mAP           & 0.0000 ± 0.0000 \\
- Epochs               & 1.0000 ± 0.0000 \\
+ Training Auc         & 0.5022 ± 0.0000      \\
+ Validation Auc       & 0.5000 ± 0.0000      \\
+ Training Precision   & 0.7542 ± 0.0000      \\
+ Validation Precision & 0.7622 ± 0.0000      \\
+ Training Accuracy    & 0.7542 ± 0.0000      \\
+ Validation Accuracy  & 0.7622 ± 0.0000      \\
+ Training Recall      & 0.7288 ± 0.0000      \\
+ Validation Recall    & 0.7368 ± 0.0000      \\
+ Training Loss        & 0.1011 ± 0.0000      \\
+ Validation Loss      & 0.0989 ± 0.0000      \\
+ Test a-mAP           & 0.0000 ± 0.0000      \\
+ Epochs               & 27.0000 ± 0.0000     \\
 \hline
 \end{tabular}

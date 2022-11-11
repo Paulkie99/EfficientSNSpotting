@@ -371,14 +371,15 @@ class TransformerTrainFeatureGenerator:
         return replays
 
     def __call__(self, *args, **kwargs):
-        for i in range(len(self.feature_paths)):
-            X, Y = self.__data_generation(i)
-            for sample in range(X.shape[0]):
-                if self.data_subset != "test":
-                    yield X[sample, ...], \
-                          Y[sample, ...]
-                else:
-                    yield X[sample, ...]
+        if self.data_subset != "test":
+            for i in range(len(self.feature_paths)):
+                X, Y = self.__data_generation(i)
+                    for sample in range(X.shape[0]):
+                        yield X[sample, ...], \
+                              Y[sample, ...]
+        else:
+            for i in range(len(self.feature_paths)):
+                yield self.__data_generation(i)
 
 
 class SoccerNetTestVideoGenerator(Sequence):

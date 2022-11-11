@@ -374,9 +374,9 @@ class TransformerTrainFeatureGenerator:
         if self.data_subset != "test":
             for i in range(len(self.feature_paths)):
                 X, Y = self.__data_generation(i)
-                    for sample in range(X.shape[0]):
-                        yield X[sample, ...], \
-                              Y[sample, ...]
+                for sample in range(X.shape[0]):
+                    yield X[sample, ...], \
+                          Y[sample, ...]
         else:
             for i in range(len(self.feature_paths)):
                 yield self.__data_generation(i)

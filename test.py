@@ -1,3 +1,4 @@
+import glob
 import json
 import os.path
 import zipfile
@@ -5,11 +6,12 @@ import zipfile
 from SoccerNet.Evaluation.utils import INVERSE_EVENT_DICTIONARY_V2
 from keras.models import load_model
 from util import release_gpu_memory, get_cv_data, get_custom_objects
-from data_generator import SoccerNetTestVideoGenerator
+from data_generator import SoccerNetTestVideoGenerator, TransformerTrainFeatureGenerator
 from numpy import argmax, minimum, maximum, transpose, copy, load, array
 from SoccerNet.Evaluation.ActionSpotting import evaluate
 from numpy import max as np_max
 from tqdm import tqdm
+import tensorflow as tf
 
 
 def zipResults(zip_path, target_dir, filename="results_spotting.json"):
@@ -62,7 +64,8 @@ def test_soccernet(data, model_name: str = 'overall_best.hdf5', cv_iter: int = 0
         ))
         train_generator = train_generator.cache().prefetch(tf.data.AUTOTUNE)
         
-        [assert vid == train_generator.feature_paths[0] for vid in games]
+        for vid in enumerate(games):
+            assert os.path.join(data["dataset path"], vid[1]) == train_generator.feature_paths[0][0]
         
         all_pred_y = model.predict(x=train_generator)[:, 1:]
         

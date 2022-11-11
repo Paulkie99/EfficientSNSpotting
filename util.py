@@ -475,8 +475,9 @@ class PositionalEmbedding(Layer):
 
 
 def get_custom_objects():
-    ret = {'PositionalEmbedding': PositionalEmbedding, 'TransformerEncoder': TransformerEncoder}
-    for k, v in keras_transformer.get_custom_objects():
+    ret = {'PositionalEmbedding': PositionalEmbedding, 'TransformerEncoder': TransformerEncoder,
+          'SinePositionEncoding': SinePositionEncoding}
+    for k, v in keras_transformer.get_custom_objects().items():
         ret[k] = v
     return ret
 

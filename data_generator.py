@@ -292,62 +292,62 @@ class TransformerTrainFeatureGenerator:
         #     temp.append(X[chunk * self.stride: chunk * self.stride + self.window_len, ...])
         # X = array(temp)
 
-        Y = zeros((X.shape[0], 18))
-        Y[:, 0] = 1
-        labels = json.load(open(join(self.feature_paths[index][0], "Labels-v2.json")))
-        for annotation in labels["annotations"]:
-            # if annotation["visibility"] == "not shown":
-            #     continue
-            time = annotation["gameTime"]
-            read_half = time[0]
-            if read_half != self.feature_paths[index][1]:
-                continue
-            event = annotation["label"]
-            if event not in self.dict_event:
-                continue
-            minutes = int(time[-5:-3])
-            seconds = int(time[-2::])
-            t_seconds = seconds + 60 * minutes  # time of event in seconds
-            frame = int(self.fps * t_seconds)
+        if self.data_subset != "test":
+            Y = zeros((X.shape[0], 18))
+            Y[:, 0] = 1
+            labels = json.load(open(join(self.feature_paths[index][0], "Labels-v2.json")))
+            for annotation in labels["annotations"]:
+                # if annotation["visibility"] == "not shown":
+                #     continue
+                time = annotation["gameTime"]
+                read_half = time[0]
+                if read_half != self.feature_paths[index][1]:
+                    continue
+                event = annotation["label"]
+                if event not in self.dict_event:
+                    continue
+                minutes = int(time[-5:-3])
+                seconds = int(time[-2::])
+                t_seconds = seconds + 60 * minutes  # time of event in seconds
+                frame = int(self.fps * t_seconds)
 
-            if frame // self.window_len >= X.shape[0]:
-                # print(f"{t_seconds} out of bounds for vid with {X.shape[0]} samples")
-                continue
+                if frame // self.window_len >= X.shape[0]:
+                    # print(f"{t_seconds} out of bounds for vid with {X.shape[0]} samples")
+                    continue
 
-            # if t_seconds <= self.extractor_win - self.extractor_stride:
-            #     f_index = 0
-            #     rest = t_seconds + 1
-            # else:
-            #     f_index = (t_seconds - (self.extractor_win - self.extractor_stride)) // self.extractor_stride - 1
-            #     rest = (self.extractor_win - self.extractor_stride) // self.extractor_stride + 2
-            # f_index = max(t_seconds - 1, 0)
-            # rest = 1
+                # if t_seconds <= self.extractor_win - self.extractor_stride:
+                #     f_index = 0
+                #     rest = t_seconds + 1
+                # else:
+                #     f_index = (t_seconds - (self.extractor_win - self.extractor_stride)) // self.extractor_stride - 1
+                #     rest = (self.extractor_win - self.extractor_stride) // self.extractor_stride + 2
+                # f_index = max(t_seconds - 1, 0)
+                # rest = 1
 
-            label = self.dict_event[event]  # event label
-            # indices = clip([(t_seconds - self.extractor_win) * self.fps
-            #                 (t_seconds + self.extractor_win) * self.fps], 0, (Y.shape[0] - 1) * self.window_len)
-            # Y[indices[0] // self.window_len: indices[1] // self.window_len + 1, 0] = 0
-            # Y[indices[0] // self.window_len: indices[1] // self.window_len + 1, label + 1] = 1
-            Y[frame // self.window_len, label + 1] = 1
-            Y[frame // self.window_len, 0] = 0
-
-        # for replay in self.replays[index]:
-        #     start, end, half = replay[0], replay[1], replay[2]
-        #     start, end = start * self.fps, end * self.fps
-        #     X = delete(X, list(range(start // self.window_len, end // self.window_len + 1)), axis=0)
-        #     Y = delete(Y, list(range(start // self.window_len, end // self.window_len + 1)), axis=0)
-        #
-        # delete_candidates = where(Y[:, 0] == 1)[0]
-        # desired_num_bg = int((X.shape[0] - len(delete_candidates)) / 17)
-        # delete_candidates = choice(delete_candidates, size=len(delete_candidates) - desired_num_bg,
-        #                            replace=False)
-        # X = delete(X, delete_candidates, axis=0)
-        # Y = delete(Y, delete_candidates, axis=0)
-
-        if self.data_subset == "test":
-            return X
-        else:
+                label = self.dict_event[event]  # event label
+                # indices = clip([(t_seconds - self.extractor_win) * self.fps
+                #                 (t_seconds + self.extractor_win) * self.fps], 0, (Y.shape[0] - 1) * self.window_len)
+                # Y[indices[0] // self.window_len: indices[1] // self.window_len + 1, 0] = 0
+                # Y[indices[0] // self.window_len: indices[1] // self.window_len + 1, label + 1] = 1
+                Y[frame // self.window_len, label + 1] = 1
+                Y[frame // self.window_len, 0] = 0
+                
+#             for replay in self.replays[index]:
+#                 start, end, half = replay[0], replay[1], replay[2]
+#                 start, end = int(start * self.fps), int(end * self.fps)
+#                 X = delete(X, list(range(start // self.window_len, end // self.window_len + 1)), axis=0)
+#                 Y = delete(Y, list(range(start // self.window_len, end // self.window_len + 1)), axis=0)
+                
+#             delete_candidates = where(Y[:, 0] == 1)[0]
+#             desired_num_bg = int((X.shape[0] - len(delete_candidates)) / 17)
+#             delete_candidates = choice(delete_candidates, size=len(delete_candidates) - desired_num_bg,
+#                                        replace=False)
+#             X = delete(X, delete_candidates, axis=0)
+#             Y = delete(Y, delete_candidates, axis=0)
+                
             return X, Y
+    
+        return X
 
     def get_replays(self, index):
         camera_labels = json.load(open(join(self.feature_paths[index][0], "Labels-cameras.json")))

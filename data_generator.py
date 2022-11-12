@@ -252,7 +252,8 @@ class SoccerNetTrainVideoDataGenerator(Sequence, SoccerNetTrainDataset):
 class TransformerTrainFeatureGenerator:
     def __init__(self, window_len: int = 7, stride: int = 7, base_path: str = "E:\\SoccerNet",
                  feature_type: str = "baidu", data_subset: str = "train", extraction_window=1,
-                 extraction_stride: int = 1, cv_iter=0, fps=1):
+                 extraction_stride: int = 1, cv_iter=0, fps=1, remove_replays=False, balance_classes=False,
+                 frame_dims=[0, 8576]):
         self.window_len = window_len
         self.stride = stride
         self.base_path = base_path
@@ -274,21 +275,25 @@ class TransformerTrainFeatureGenerator:
         self.extractor_win = extraction_window
         self.extractor_stride = extraction_stride
         self.fps = fps
+        self.remove_replays = remove_replays
+        self.balance_classes = balance_classes
+        self.frame_dims = frame_dims
 
     def __data_generation(self, index):
-        X = load(join(self.feature_paths[index][0], self.feature_paths[index][1] + "_" + self.feature_type))
-
-        idx = arange(start=0, stop=X.shape[0], step=self.stride)
+        X = load(join(self.feature_paths[index][0], self.feature_paths[index][1] + "_" + self.feature_type))[:, self.frame_dims[0]:self.frame_dims[1]]
+        idx = arange(start=0, stop=X.shape[0] - self.window_len, step=self.stride)
         idxs = []
         for i in arange(0, self.window_len):
             idxs.append(idx + i)
         idx = stack(idxs, axis=1)
 
-        idx = clip(idx, 0, X.shape[0] - 1)
         X = X[idx, ...]
 
         if self.data_subset != "test":
-            Y = zeros((X.shape[0], 18))
+            if "baidu" in self.feature_type.lower():
+                Y = zeros((X.shape[0], 1))
+            else:
+                Y = zeros((X.shape[0], 18))
             Y[:, 0] = 1
             labels = json.load(open(join(self.feature_paths[index][0], "Labels-v2.json")))
             for annotation in labels["annotations"]:
@@ -304,7 +309,7 @@ class TransformerTrainFeatureGenerator:
                 minutes = int(time[-5:-3])
                 seconds = int(time[-2::])
                 t_seconds = seconds + 60 * minutes  # time of event in seconds
-                frame = int(self.fps * t_seconds)
+                frame = int(self.fps * t_seconds) // self.stride
 
                 if frame // self.window_len >= X.shape[0]:
                     continue
@@ -314,24 +319,29 @@ class TransformerTrainFeatureGenerator:
                 #                 (t_seconds + self.extractor_win) * self.fps], 0, (Y.shape[0] - 1) * self.window_len)
                 # Y[indices[0] // self.window_len: indices[1] // self.window_len + 1, 0] = 0
                 # Y[indices[0] // self.window_len: indices[1] // self.window_len + 1, label + 1] = 1
-                Y[frame // self.window_len, label + 1] = 1
-                Y[frame // self.window_len, 0] = 0
-                
-#             for replay in self.replays[index]:
-#                 start, end, half = replay[0], replay[1], replay[2]
-#                 start, end = int(start * self.fps), int(end * self.fps)
-#                 X = delete(X, list(range(start // self.window_len, end // self.window_len + 1)), axis=0)
-#                 Y = delete(Y, list(range(start // self.window_len, end // self.window_len + 1)), axis=0)
-                
-#             delete_candidates = where(Y[:, 0] == 1)[0]
-#             desired_num_bg = int((X.shape[0] - len(delete_candidates)) / 17)
-#             delete_candidates = choice(delete_candidates, size=len(delete_candidates) - desired_num_bg,
-#                                        replace=False)
-#             X = delete(X, delete_candidates, axis=0)
-#             Y = delete(Y, delete_candidates, axis=0)
-                
+                if "baidu" in self.feature_type.lower():
+                    Y[frame // self.window_len, 0] = label + 1
+                else:
+                    Y[frame // self.window_len, label + 1] = 1
+                    Y[frame // self.window_len, 0] = 0
+
+            if self.remove_replays:
+                for replay in self.replays[index]:
+                    start, end, half = replay[0], replay[1], replay[2]
+                    start, end = int(start * self.fps) // self.stride, int(end * self.fps) // self.stride
+                    X = delete(X, list(range(start // self.window_len, end // self.window_len + 1)), axis=0)
+                    Y = delete(Y, list(range(start // self.window_len, end // self.window_len + 1)), axis=0)
+
+            if self.balance_classes:
+                delete_candidates = where(Y[:, 0] == 1)[0]
+                desired_num_bg = int((X.shape[0] - len(delete_candidates)) / 17)
+                delete_candidates = choice(delete_candidates, size=len(delete_candidates) - desired_num_bg,
+                                           replace=False)
+                X = delete(X, delete_candidates, axis=0)
+                Y = delete(Y, delete_candidates, axis=0)
+
             return X, Y
-    
+
         return X
 
     def get_replays(self, index):

@@ -147,3 +147,5 @@ train_cache_0.data-00000-of-00001.tempstate953958391476712672
 **/tensorboard/
 
 *.hdf5
+
+playground.py

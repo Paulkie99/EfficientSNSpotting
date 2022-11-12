@@ -1,30 +1,20 @@
-import copy
-import datetime
 import gc
-import glob
 import json
 import os
-import shutil
 from math import ceil
-import tensorflow as tf
 import cv2
 import h5py
-import keras_transformer
-from tensorflow import range as trange, newaxis
 from keras.metrics import AUC, Precision, Recall
-from keras_pos_embd import TrigPosEmbedding
-from keras_transformer import get_encoders
-from keras import Input, Sequential
-from keras.layers import Layer, GlobalMaxPooling1D, Add
+from keras import Input
+from keras.layers import Add
 from keras_nlp.layers import TransformerEncoder, SinePositionEncoding
-from numpy import float32, save, zeros, single, array, where, load, append
-from os.path import join, exists, isfile
+from numpy import float32, save, zeros, single, array, where
+from os.path import join, exists
 from keras.applications.inception_v3 import InceptionV3, preprocess_input
 from keras.models import Model, load_model
-from keras.layers import GlobalAveragePooling2D, Dense, Embedding, Flatten
-from tensorflow import reduce_any
+from keras.layers import GlobalAveragePooling2D, Dense, Flatten
 from tqdm import tqdm
-from keras.backend import clear_session, shape, cast
+from keras.backend import clear_session
 from tabulate import tabulate
 from SoccerNet.Downloader import getListGames, SoccerNetDownloader
 from skvideo.measure import scenedet
@@ -95,6 +85,10 @@ def isConfigEqual(conf1, conf2):
         return False
     if conf1["NMS threshold"] != conf2["NMS threshold"]:
         return False
+    if conf1["balance classes"] != conf2["balance classes"]:
+        return False
+    if conf1["remove replays"] != conf2["remove replays"]:
+        return False
 
     return True
 
@@ -107,8 +101,8 @@ def setup_environment(data):
     gpus = list_physical_devices('GPU')
     for gpu in gpus:
         set_memory_growth(gpu, True)
-    # policy = mixed_precision.Policy('mixed_float16')
-    # mixed_precision.set_global_policy(policy)
+    policy = mixed_precision.Policy('mixed_float16')
+    mixed_precision.set_global_policy(policy)
     if data["jit"]:
         set_jit(True)
     release_gpu_memory()
@@ -157,11 +151,11 @@ def check_extract_soccernet_frames():
             if not exists(join("E:\\SoccerNet", vid, f"{half}_224p.mkv")):
                 downloader.downloadGames(files=[f"{half}_224p.mkv"],
                                          split=["train", "test", "valid"])
-            if exists(join("E:\\SoccerNet", vid, f"{half}_frames.h5")):
+            if exists(join("H:\\SoccerNet", vid, f"{half}_frames.h5")):
                 try:
                     with VideoFileClip(join("E:\\SoccerNet", vid, f"{half}_224p.mkv"), audio=False) as clip:
                         duration = clip.reader.nframes
-                    with h5py.File(join("E:\\SoccerNet", vid, f"{half}_frames.h5"), 'r') as hf:
+                    with h5py.File(join("H:\\SoccerNet", vid, f"{half}_frames.h5"), 'r') as hf:
                         if abs(ceil(duration / 8) - hf['soccernet_3_125_fps'].shape[0]) <= 1:
                             continue
                         else:
@@ -442,61 +436,29 @@ def saveResNetFeaturesForSoccerNet(soccernet_path: str = "E:\\SoccerNet", resnet
 
 def map_train_metrics_to_funcs(metrics):
     metrics = array(metrics, dtype=object)
-    metrics[where(metrics == 'auc')[0]] = AUC(multi_label=True)
+    metrics[where(metrics == 'auc')[0]] = AUC(multi_label=True, num_labels=18)
     metrics[where(metrics == 'precision')[0]] = Precision(name='precision')
     metrics[where(metrics == 'recall')[0]] = Recall(name='recall')
 
     return list(metrics)
 
 
-class PositionalEmbedding(Layer):
-    def __init__(self, sequence_length, output_dim, **kwargs):
-        super().__init__(**kwargs)
-        self.position_embeddings = Embedding(
-            input_dim=sequence_length, output_dim=output_dim
-        )
-        self.sequence_length = sequence_length
-        self.output_dim = output_dim
-
-    def call(self, inputs):
-        # The inputs are of shape: `(batch_size, frames, num_features)`
-        length = shape(inputs)[1]
-        positions = trange(start=0, limit=length, delta=1)
-        embedded_positions = self.position_embeddings(positions)
-        embedded_positions = SinePositionEncoding()(embedded_positions)
-        # embedded_positions = SinePositionEncoding()(inputs)
-        return inputs + embedded_positions
-
-    def compute_mask(self, inputs, mask=None):
-        mask = reduce_any(cast(inputs, "bool"), axis=-1)
-        return mask
-
-    def get_config(self):
-        config = super().get_config()
-        config.update({
-            "sequence_length": self.sequence_length,
-            "output_dim": self.output_dim,
-        })
-        return config
-
-
 def get_custom_objects():
-    ret = {'PositionalEmbedding': PositionalEmbedding, 'TransformerEncoder': TransformerEncoder,
+    ret = {'TransformerEncoder': TransformerEncoder,
            'SinePositionEncoding': SinePositionEncoding}
-    for k, v in keras_transformer.get_custom_objects().items():
-        ret[k] = v
+    # for k, v in keras_transformer.get_custom_objects().items():
+    #     ret[k] = v
     return ret
 
 
-def createTransformerModel(model: str = "ResNet", seq_length: int = 7):
+def createTransformerModel(model: str = "ResNet", seq_length: int = 7, frame_dim=8576):
     if "resnet" in model.lower():
-        shape = (seq_length, 512)
+        shape = (seq_length, frame_dim)
     elif "baidu" in model.lower():
-        shape = (seq_length, 8576)
+        shape = (seq_length, frame_dim)
     inputs = Input(shape, dtype=float32)
     embedding = SinePositionEncoding()(inputs)
     outputs = Add()([inputs, embedding])
-    # outputs = PositionalEmbedding(shape[0], shape[1])(inputs)
 
     for i in range(3):
         outputs = TransformerEncoder(intermediate_dim=64, num_heads=4)(outputs)
@@ -536,7 +498,8 @@ def create_model(data):
                                                   data["frame dims"][0], data["frame dims"][1], 3), 18,
                                                  multilabel=True)
     elif "baidu" in data["model"].lower():
-        model_ = createTransformerModel("baidu", seq_length=data["window length"])
+        model_ = createTransformerModel("baidu", seq_length=data["window length"],
+                                        frame_dim=data["frame dims"][1] - data["frame dims"][0])
     elif "ann" in data["model"].lower():
         model_ = createANN(dataset=data["dataset"], seq_length=data["window length"], **data["model params"])
 

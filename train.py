@@ -25,9 +25,9 @@ def train(data, iteration, cv_iter, queue) -> History:
 
     :return: Training history.
     """
-    model = (
-        create_model(data) if data["saved model"] == "" else load_model(data["saved model"],
-                                                                        custom_objects=get_custom_objects()))
+    model = create_model(data)
+    if data["saved model"] != "":
+        model.load_weights(data["saved model"])
     optimizer = Adam(learning_rate=float(data["learning rate"]), decay=float(data["decay"]))
     model.compile(optimizer,
                   loss='binary_crossentropy',
@@ -44,7 +44,7 @@ def train(data, iteration, cv_iter, queue) -> History:
     best_checkpointer = ModelCheckpoint(
         filepath=join(checkpoints_dir, 'best_' + iteration + '.hdf5'),
         verbose=1,
-        save_best_only=True)
+        save_best_only=True, save_weights_only=True)
 
     # Logging
     log_dir = join("models", "SoccerNet", data["model"], 'logs', f'{cv_iter}')
@@ -57,7 +57,7 @@ def train(data, iteration, cv_iter, queue) -> History:
     # Tensorboard
     log_dir = join("models", "SoccerNet", data["model"], 'tensorboard', f'{cv_iter}')
     tboard_callback = TensorBoard(log_dir=log_dir,
-                                  profile_batch='200,300')
+                                  profile_batch='2000,2100')
 
     callbacks = [best_checkpointer, csv_logger, early_stopper, tboard_callback]
 
@@ -103,23 +103,31 @@ def train(data, iteration, cv_iter, queue) -> History:
         train_generator = TransformerTrainFeatureGenerator(feature_type="baidu", window_len=data["window length"],
                                                            stride=data["stride"], base_path=data["dataset path"],
                                                            data_subset="train", cv_iter=cv_iter,
-                                                           fps=data["feature fps"])
+                                                           fps=data["feature fps"],
+                                                           remove_replays=data["remove replays"],
+                                                           balance_classes=data["balance classes"],
+                                                           frame_dims=data["frame dims"])
         train_generator = tf.data.Dataset.from_generator(train_generator, output_signature=(
-            tf.TensorSpec(shape=(data["window length"], 8576), dtype=tf.float32),
-            tf.TensorSpec(shape=(18,), dtype=tf.uint8)
+            tf.TensorSpec(shape=(data["window length"],
+                                 data["frame dims"][1] - data["frame dims"][0]), dtype=tf.float32),
+            tf.TensorSpec(shape=(1,), dtype=tf.uint8)
         ))
-        train_generator = train_generator.cache("train_cache").shuffle(2000).batch(data["batch size"],
-                                                                                   num_parallel_calls=tf.data.AUTOTUNE,
-                                                                                   deterministic=False).prefetch(
+        train_generator = train_generator.take(-1).cache("train_cache").shuffle(2000).batch(data["batch size"],
+                                                                                            num_parallel_calls=tf.data.AUTOTUNE,
+                                                                                            deterministic=False).prefetch(
             tf.data.AUTOTUNE)
 
         validation_generator = TransformerTrainFeatureGenerator(feature_type="baidu", window_len=data["window length"],
                                                                 stride=data["stride"], base_path=data["dataset path"],
                                                                 data_subset="valid", cv_iter=cv_iter,
-                                                                fps=data["feature fps"])
+                                                                fps=data["feature fps"],
+                                                                remove_replays=data["remove replays"],
+                                                                balance_classes=data["balance classes"],
+                                                                frame_dims=data["frame dims"])
         validation_generator = tf.data.Dataset.from_generator(validation_generator, output_signature=(
-            tf.TensorSpec(shape=(data["window length"], 8576), dtype=tf.float32),
-            tf.TensorSpec(shape=(18,), dtype=tf.uint8)
+            tf.TensorSpec(shape=(data["window length"],
+                                 data["frame dims"][1] - data["frame dims"][0]), dtype=tf.float32),
+            tf.TensorSpec(shape=(1,), dtype=tf.uint8)
         ))
 
         validation_generator = validation_generator.batch(data["batch size"],
@@ -231,6 +239,10 @@ def train_for_iterations(data):
     cv_avg_metrics["best iter"] = cv_avg_metrics["best_val_iter"][cv_avg_metrics["best cv iter"]]
     cv_avg_metrics["best valid loss"] = cv_avg_metrics["best_val_loss"][cv_avg_metrics["best cv iter"]]
 
+    for k in range(cv_iterations):
+        if k != cv_avg_metrics["best cv iter"]:
+            os.remove(join('models', "SoccerNet", data["model"], "checkpoints", f'{k}', 'overall_best.hdf5'))
+
     with open(join('models', "SoccerNet", data["model"], "results", "CV", f'avg_metrics_all_cv.json'), 'w') as f:
         json.dump(cv_avg_metrics, f, indent=4)
 
@@ -250,7 +262,8 @@ if __name__ == '__main__':
     with open(join('models', "SoccerNet", data["model"], "results", "CV", f'avg_metrics_all_cv.json'), 'r') as f:
         metrics = json.load(f)
 
-    test_soccernet(data, cv_iter=metrics["best cv iter"])
+    if data["CV iterations"] or data["MC iterations"] > 1:
+        test_soccernet(data, cv_iter=metrics["best cv iter"])
 
     plot_train_history(data)
     save_train_latex_table(data)

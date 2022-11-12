@@ -5,7 +5,7 @@ import zipfile
 
 from SoccerNet.Evaluation.utils import INVERSE_EVENT_DICTIONARY_V2
 from keras.models import load_model
-from util import release_gpu_memory, get_cv_data, get_custom_objects
+from util import release_gpu_memory, get_cv_data, get_custom_objects, create_model
 from data_generator import SoccerNetTestVideoGenerator, TransformerTrainFeatureGenerator
 from numpy import argmax, minimum, maximum, transpose, copy, load, array
 from SoccerNet.Evaluation.ActionSpotting import evaluate
@@ -51,8 +51,8 @@ def test_soccernet(data, model_name: str = 'overall_best.hdf5', cv_iter: int = 0
         raise Exception(
             f"The model you tried to load does not exist: {os.path.join(path, 'checkpoints', f'{cv_iter}', model_name)}")
 
-    model = load_model(os.path.join(path, "checkpoints", f'{cv_iter}', model_name),
-                       custom_objects=get_custom_objects())
+    model = create_model(data)
+    model.load_weights(os.path.join(path, "checkpoints", f'{cv_iter}', model_name))
 
     games = get_cv_data("test", cv_iter)
     if "resnet" in data["model"].lower():
@@ -67,7 +67,8 @@ def test_soccernet(data, model_name: str = 'overall_best.hdf5', cv_iter: int = 0
         generator = TransformerTrainFeatureGenerator(data["window length"], data["test stride"], data["dataset path"],
                                                      "baidu", "test", 1, 1, cv_iter, data["feature fps"])
         train_generator = tf.data.Dataset.from_generator(generator, output_signature=(
-            tf.TensorSpec(shape=(None, data["window length"], 8576), dtype=tf.float32)
+            tf.TensorSpec(shape=(None, data["window length"], data["frame dims"][1] - data["frame dims"][0]),
+                          dtype=tf.float32)
         ))
         train_generator = train_generator.prefetch(tf.data.AUTOTUNE)
 

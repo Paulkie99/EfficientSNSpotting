@@ -89,6 +89,10 @@ def isConfigEqual(conf1, conf2):
         return False
     if conf1["remove replays"] != conf2["remove replays"]:
         return False
+    if conf1["data fraction"] != conf2["data fraction"]:
+        return False
+    if conf1["model params"] != conf2["model params"]:
+        return False
 
     return True
 
@@ -177,7 +181,7 @@ def check_extract_soccernet_frames():
                 h5f.create_dataset('soccernet_3_125_fps', data=frames)
 
 
-def get_cv_data(subset, cv_iter):
+def get_cv_data(subset, cv_iter, data_fraction):
     """
     Read appropriate data split.
     """
@@ -218,9 +222,10 @@ def get_cv_data(subset, cv_iter):
                 ret = train_paths[200:300]
             elif cv_iter == 4:
                 ret = valid_paths
-        return ret
+        return ret[:int(data_fraction * len(ret))]
     else:
-        return getListGames([subset])
+        games = getListGames([subset])
+        return games[:int(data_fraction * len(games))]
 
 
 def crop_frame(ret):

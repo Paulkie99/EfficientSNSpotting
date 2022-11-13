@@ -1,19 +1,15 @@
 import glob
 import multiprocessing
 import os
-import shutil
-
-from SoccerNet.utils import getListGames
 from tensorflow.keras.optimizers import Adam
 from keras.callbacks import ModelCheckpoint, EarlyStopping, CSVLogger, History, TensorBoard
-from keras.models import load_model, save_model
 from os.path import join
 import tensorflow as tf
 from tqdm import tqdm
 from data_generator import SoccerNetTrainVideoDataGenerator, TransformerTrainFeatureGenerator, \
     SoccerNetTrainDataset
 from util import release_gpu_memory, save_train_latex_table, save_test_latex_table, create_model, \
-    setup_environment, map_train_metrics_to_funcs, get_custom_objects, get_config
+    setup_environment, map_train_metrics_to_funcs, get_config
 from numpy import inf, argmin, mean, std, sqrt, square
 from test import test_soccernet
 from plotter import plot_train_history
@@ -70,7 +66,8 @@ def train(data, iteration, cv_iter, queue) -> History:
             'cv_iter': cv_iter,
             'frame_dims': data["frame dims"],
             'resize_method': data["resize method"],
-            'batch_size': data["batch size"]
+            'batch_size': data["batch size"],
+            'data_fraction': data["data fraction"]
         }
 
         train_generator = SoccerNetTrainVideoDataGenerator(**params)
@@ -106,11 +103,12 @@ def train(data, iteration, cv_iter, queue) -> History:
                                                            fps=data["feature fps"],
                                                            remove_replays=data["remove replays"],
                                                            balance_classes=data["balance classes"],
-                                                           frame_dims=data["frame dims"])
+                                                           frame_dims=data["frame dims"],
+                                                           data_fraction=data["data fraction"])
         train_generator = tf.data.Dataset.from_generator(train_generator, output_signature=(
             tf.TensorSpec(shape=(data["window length"],
                                  data["frame dims"][1] - data["frame dims"][0]), dtype=tf.float32),
-            tf.TensorSpec(shape=(1,), dtype=tf.uint8)
+            tf.TensorSpec(shape=(18,), dtype=tf.uint8)
         ))
         train_generator = train_generator.take(-1).cache("train_cache").shuffle(2000).batch(data["batch size"],
                                                                                             num_parallel_calls=tf.data.AUTOTUNE,
@@ -123,11 +121,12 @@ def train(data, iteration, cv_iter, queue) -> History:
                                                                 fps=data["feature fps"],
                                                                 remove_replays=data["remove replays"],
                                                                 balance_classes=data["balance classes"],
-                                                                frame_dims=data["frame dims"])
+                                                                frame_dims=data["frame dims"],
+                                                                data_fraction=data["data fraction"])
         validation_generator = tf.data.Dataset.from_generator(validation_generator, output_signature=(
             tf.TensorSpec(shape=(data["window length"],
                                  data["frame dims"][1] - data["frame dims"][0]), dtype=tf.float32),
-            tf.TensorSpec(shape=(1,), dtype=tf.uint8)
+            tf.TensorSpec(shape=(18,), dtype=tf.uint8)
         ))
 
         validation_generator = validation_generator.batch(data["batch size"],
@@ -180,7 +179,6 @@ def train_for_iterations(data):
             history = queue.get()
             p.join()
             print("Joined")
-            # history = train(data, i, cv_iter, queue)
 
             save_metrics["epochs"].append(len(history['val_loss']))
             index_of_min_validation_loss = argmin(history['val_loss'])
@@ -193,10 +191,6 @@ def train_for_iterations(data):
             if min(history['val_loss']) < save_metrics["best_val_loss"]:
                 save_metrics["best_val_loss"] = min(history['val_loss'])
                 save_metrics["best_val_iter"] = i
-                # load_path = join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}', f'best_{i}.hdf5')
-                # save_path = join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}',
-                #                  f'overall_best.hdf5')
-                # shutil.copy(load_path, save_path)
                 os.rename(join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}', f'best_{i}.hdf5'),
                           join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}', f'overall_best.hdf5'))
             else:
@@ -255,14 +249,15 @@ if __name__ == '__main__':
 
     setup_environment(data)
 
-    train_for_iterations(data)
+    if not data["test only"]:
+        train_for_iterations(data)
 
     # Test results, plotting and tables
 
     with open(join('models', "SoccerNet", data["model"], "results", "CV", f'avg_metrics_all_cv.json'), 'r') as f:
         metrics = json.load(f)
 
-    if data["CV iterations"] or data["MC iterations"] > 1:
+    if data["CV iterations"] or data["MC iterations"] > 1 or data["test only"]:
         test_soccernet(data, cv_iter=metrics["best cv iter"])
 
     plot_train_history(data)

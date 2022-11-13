@@ -1,32 +1,42 @@
 {
     "model": "Baidu",
     "model params": {},
-    "MC iterations": 5,
+    "saved model": "",
+    "init epoch": 0,
+
+
+    "test only": false,
+    "MC iterations": 1,
     "MC start": 0,
-    "CV iterations": true,
+    "CV iterations": false,
     "CV start": 0,
     "learning rate": 5e-4,
     "decay": 0,
-    "batch size": 32,
+    "batch size": 256,
+    "epochs": 10,
+    "patience": 10,
+    "train metrics": ["auc", "precision", "recall", "accuracy"],
+    "remove replays": false,
+    "balance classes": false,
     "dataset path": "F:\\SoccerNet",
-    "epochs": 50,
+    "data fraction": 0.75,
+
+
     "feature fps": 1.0,
     "frame dims": [0, 8576],
     "resize method": "",
     "window length": 7,
     "stride": 7,
     "test stride": 1,
-    "patience": 10,
-    "saved model": "",
-    "init epoch": 0,
+
+
+    "NMS window": 20,
+    "NMS threshold": 0,
+
+
     "jit": true,
     "append training logs": false,
     "multi proc": true,
     "workers": 6,
-    "queue size": 15,
-    "train metrics": ["auc", "precision", "accuracy", "recall"],
-    "NMS window": 20,
-    "NMS threshold": 0,
-    "remove replays": false,
-    "balance classes": false
+    "queue size": 15
 }

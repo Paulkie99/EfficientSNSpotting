@@ -1,10 +1,9 @@
-import random
 from multiprocessing import Pool, cpu_count
 import h5py
+from keras.utils import to_categorical
 from tensorflow.keras.utils import Sequence
-from numpy import ceil, single, zeros, reshape, divide, load, array, clip, array_split, uint8, delete, where, arange, \
-    stack
-from numpy import sum as np_sum
+from numpy import ceil, single, zeros, reshape, divide, load, uint8, delete, where, arange, \
+    stack, save, clip
 from numpy.random import randint, choice
 from os.path import join
 from SoccerNet.DataLoader import getDuration
@@ -16,14 +15,14 @@ from util import resize, get_cv_data
 
 class SoccerNetTrainDataset:
     def __init__(self, train: str = "train", data_path: str = 'E:\\SoccerNet', fps: float = 3.2,
-                 window_len: int = 5, cv_iter: int = 0):
+                 window_len: int = 5, cv_iter: int = 0, data_fraction=1):
         self.y = None
         self.sample_start_times = None
         self.window_len = window_len
         self.labels = "Labels-v2.json"
         self.train = train
 
-        self.all_vid_paths = get_cv_data(train, cv_iter)
+        self.all_vid_paths = get_cv_data(train, cv_iter, data_fraction)
 
         self.base_data_path = data_path
 
@@ -198,14 +197,14 @@ class SoccerNetTrainVideoDataGenerator(Sequence, SoccerNetTrainDataset):
     """
 
     def __init__(self, batch_size: int = 32, train: str = "train", data_path: str = 'E:\\SoccerNet', fps: float = 3.2,
-                 window_len: int = 5, cv_iter: int = 0, frame_dims=(224, 398), resize_method=""):
+                 window_len: int = 5, cv_iter: int = 0, frame_dims=(224, 398), resize_method="", data_fraction=1):
         """
         Initialise the class.
         :param train: Whether 'train', 'validation' or 'test' data should be loaded.
         :param data_path: The path which contains the video clip folders.
         :param batch_size: Number of samples in each generated batch.
         """
-        super().__init__(train, data_path, fps, window_len, cv_iter)
+        super().__init__(train, data_path, fps, window_len, cv_iter, data_fraction)
         self.batch_size = batch_size
         self.frame_dims = frame_dims
         self.resize_method = resize_method
@@ -253,7 +252,7 @@ class TransformerTrainFeatureGenerator:
     def __init__(self, window_len: int = 7, stride: int = 7, base_path: str = "E:\\SoccerNet",
                  feature_type: str = "baidu", data_subset: str = "train", extraction_window=1,
                  extraction_stride: int = 1, cv_iter=0, fps=1, remove_replays=False, balance_classes=False,
-                 frame_dims=[0, 8576]):
+                 frame_dims=[0, 8576], data_fraction=1):
         self.window_len = window_len
         self.stride = stride
         self.base_path = base_path
@@ -261,7 +260,7 @@ class TransformerTrainFeatureGenerator:
 
         self.data_subset = data_subset
         self.feature_paths = []
-        for vid in get_cv_data(data_subset, cv_iter):
+        for vid in get_cv_data(data_subset, cv_iter, data_fraction):
             for half in range(1, 3):
                 self.feature_paths.append((join(self.base_path, vid), f"{half}"))
         self.replays = []
@@ -272,12 +271,11 @@ class TransformerTrainFeatureGenerator:
         self.num_classes = 17
         self.label_file = "Labels-v2.json"
         self.dict_event = EVENT_DICTIONARY_V2
-        self.extractor_win = extraction_window
-        self.extractor_stride = extraction_stride
         self.fps = fps
         self.remove_replays = remove_replays
         self.balance_classes = balance_classes
         self.frame_dims = frame_dims
+        self.overlap = self.window_len - self.stride
 
     def __data_generation(self, index):
         X = load(join(self.feature_paths[index][0], self.feature_paths[index][1] + "_" + self.feature_type))[:, self.frame_dims[0]:self.frame_dims[1]]
@@ -289,12 +287,11 @@ class TransformerTrainFeatureGenerator:
 
         X = X[idx, ...]
 
+        assert X.shape[1] == self.window_len
+        assert X.shape[2] == self.frame_dims[1] - self.frame_dims[0]
+
         if self.data_subset != "test":
-            if "baidu" in self.feature_type.lower():
-                Y = zeros((X.shape[0], 1))
-            else:
-                Y = zeros((X.shape[0], 18))
-            Y[:, 0] = 1
+            Y = zeros((X.shape[0], 1))
             labels = json.load(open(join(self.feature_paths[index][0], "Labels-v2.json")))
             for annotation in labels["annotations"]:
                 # if annotation["visibility"] == "not shown":
@@ -311,36 +308,29 @@ class TransformerTrainFeatureGenerator:
                 t_seconds = seconds + 60 * minutes  # time of event in seconds
                 frame = int(self.fps * t_seconds) // self.stride
 
-                if frame // self.window_len >= X.shape[0]:
+                if frame >= X.shape[0]:
                     continue
 
                 label = self.dict_event[event]  # event label
-                # indices = clip([(t_seconds - self.extractor_win) * self.fps
-                #                 (t_seconds + self.extractor_win) * self.fps], 0, (Y.shape[0] - 1) * self.window_len)
-                # Y[indices[0] // self.window_len: indices[1] // self.window_len + 1, 0] = 0
-                # Y[indices[0] // self.window_len: indices[1] // self.window_len + 1, label + 1] = 1
-                if "baidu" in self.feature_type.lower():
-                    Y[frame // self.window_len, 0] = label + 1
-                else:
-                    Y[frame // self.window_len, label + 1] = 1
-                    Y[frame // self.window_len, 0] = 0
+                start = max(frame - self.overlap, 0)
+                Y[start: frame + 1, 0] = label + 1
 
             if self.remove_replays:
                 for replay in self.replays[index]:
                     start, end, half = replay[0], replay[1], replay[2]
                     start, end = int(start * self.fps) // self.stride, int(end * self.fps) // self.stride
-                    X = delete(X, list(range(start // self.window_len, end // self.window_len + 1)), axis=0)
-                    Y = delete(Y, list(range(start // self.window_len, end // self.window_len + 1)), axis=0)
+                    X = delete(X, list(range(start, end + 1)), axis=0)
+                    Y = delete(Y, list(range(start, end + 1)), axis=0)
 
             if self.balance_classes:
-                delete_candidates = where(Y[:, 0] == 1)[0]
+                delete_candidates = where(Y[:, 0] == 0)[0]
                 desired_num_bg = int((X.shape[0] - len(delete_candidates)) / 17)
                 delete_candidates = choice(delete_candidates, size=len(delete_candidates) - desired_num_bg,
                                            replace=False)
                 X = delete(X, delete_candidates, axis=0)
                 Y = delete(Y, delete_candidates, axis=0)
 
-            return X, Y
+            return X, to_categorical(Y, num_classes=18)
 
         return X
 

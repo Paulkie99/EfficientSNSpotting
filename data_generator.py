@@ -3,7 +3,7 @@ import h5py
 from keras.utils import to_categorical
 from tensorflow.keras.utils import Sequence
 from numpy import ceil, single, zeros, reshape, divide, load, uint8, delete, where, arange, \
-    stack, save, clip
+    stack
 from numpy.random import randint, choice
 from os.path import join
 from SoccerNet.DataLoader import getDuration

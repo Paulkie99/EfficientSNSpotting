@@ -52,7 +52,7 @@ def test_soccernet(data, model_name: str = 'overall_best.hdf5', cv_iter: int = 0
     model = create_model(data)
     model.load_weights(os.path.join(path, "checkpoints", f'{cv_iter}', model_name))
 
-    games = get_cv_data("test", cv_iter, data["data fraction"])
+    games = get_cv_data("test", cv_iter, 1)
     if "resnet" in data["model"].lower():
         # TODO change test generator
         pass

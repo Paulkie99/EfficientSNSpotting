@@ -1,6 +1,8 @@
 import glob
 import multiprocessing
 import os
+import shutil
+
 from tensorflow.keras.optimizers import Adam
 from keras.callbacks import ModelCheckpoint, EarlyStopping, CSVLogger, History, TensorBoard
 from os.path import join
@@ -52,6 +54,9 @@ def train(data, iteration, cv_iter, queue) -> History:
 
     # Tensorboard
     log_dir = join("models", "SoccerNet", data["model"], 'tensorboard', f'{cv_iter}')
+    if os.path.exists(log_dir):
+        shutil.rmtree(log_dir)
+    os.makedirs(log_dir)
     tboard_callback = TensorBoard(log_dir=log_dir,
                                   profile_batch='2000,2100')
 

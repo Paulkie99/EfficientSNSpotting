@@ -8,10 +8,11 @@ from keras.callbacks import ModelCheckpoint, EarlyStopping, CSVLogger, History, 
 from os.path import join
 import tensorflow as tf
 from tqdm import tqdm
-from data_generator import SoccerNetTrainVideoDataGenerator, TransformerTrainFeatureGenerator, \
+from data_generator import SoccerNetTrainVideoDataGenerator, DeepFeatureGenerator, \
     SoccerNetTrainDataset
-from util import release_gpu_memory, save_train_latex_table, save_test_latex_table, create_model, \
-    setup_environment, map_train_metrics_to_funcs, get_config
+from util import release_gpu_memory, save_train_latex_table, save_test_latex_table, setup_environment, \
+    map_train_metrics_to_funcs, get_config
+from models import create_model
 from numpy import inf, argmin, mean, std, sqrt, square
 from test import test_soccernet
 from plotter import plot_train_history
@@ -98,18 +99,18 @@ def train(data, iteration, cv_iter, queue) -> History:
         # validation_generator = validation_generator.batch(batch_size, num_parallel_calls=tf.data.AUTOTUNE,
         #                                                   deterministic=False).prefetch(tf.data.AUTOTUNE)
 
-    elif "baidu" in data["model"].lower():
+    elif "baidu" in data["model"].lower() or "netvlad" in data["model"].lower():
         [os.remove(path) for path in glob.glob("*train_cache*")]
         [os.remove(path) for path in glob.glob("*valid_cache*")]
 
-        train_generator = TransformerTrainFeatureGenerator(feature_type="baidu", window_len=data["window length"],
-                                                           stride=data["stride"], base_path=data["dataset path"],
-                                                           data_subset="train", cv_iter=cv_iter,
-                                                           fps=data["feature fps"],
-                                                           remove_replays=data["remove replays"],
-                                                           balance_classes=data["balance classes"],
-                                                           frame_dims=data["frame dims"],
-                                                           data_fraction=data["data fraction"])
+        train_generator = DeepFeatureGenerator(feature_type="baidu", window_len=data["window length"],
+                                               stride=data["stride"], base_path=data["dataset path"],
+                                               data_subset="train", cv_iter=cv_iter,
+                                               fps=data["feature fps"],
+                                               remove_replays=data["remove replays"],
+                                               balance_classes=data["balance classes"],
+                                               frame_dims=data["frame dims"],
+                                               data_fraction=data["data fraction"])
         train_generator = tf.data.Dataset.from_generator(train_generator, output_signature=(
             tf.TensorSpec(shape=(data["window length"],
                                  data["frame dims"][1] - data["frame dims"][0]), dtype=tf.float32),
@@ -117,17 +118,21 @@ def train(data, iteration, cv_iter, queue) -> History:
         ))
         train_generator = train_generator.take(-1).cache("train_cache").shuffle(2000).batch(data["batch size"],
                                                                                             num_parallel_calls=tf.data.AUTOTUNE,
-                                                                                            deterministic=False).prefetch(
+                                                                                            deterministic=False,
+                                                                                            drop_remainder=(
+                                                                                                True if "netvlad" in
+                                                                                                        data[
+                                                                                                            "model"].lower() else False)).prefetch(
             tf.data.AUTOTUNE)
 
-        validation_generator = TransformerTrainFeatureGenerator(feature_type="baidu", window_len=data["window length"],
-                                                                stride=data["stride"], base_path=data["dataset path"],
-                                                                data_subset="valid", cv_iter=cv_iter,
-                                                                fps=data["feature fps"],
-                                                                remove_replays=data["remove replays"],
-                                                                balance_classes=data["balance classes"],
-                                                                frame_dims=data["frame dims"],
-                                                                data_fraction=data["data fraction"])
+        validation_generator = DeepFeatureGenerator(feature_type="baidu", window_len=data["window length"],
+                                                    stride=data["stride"], base_path=data["dataset path"],
+                                                    data_subset="valid", cv_iter=cv_iter,
+                                                    fps=data["feature fps"],
+                                                    remove_replays=data["remove replays"],
+                                                    balance_classes=data["balance classes"],
+                                                    frame_dims=data["frame dims"],
+                                                    data_fraction=data["data fraction"])
         validation_generator = tf.data.Dataset.from_generator(validation_generator, output_signature=(
             tf.TensorSpec(shape=(data["window length"],
                                  data["frame dims"][1] - data["frame dims"][0]), dtype=tf.float32),
@@ -136,7 +141,9 @@ def train(data, iteration, cv_iter, queue) -> History:
 
         validation_generator = validation_generator.batch(data["batch size"],
                                                           num_parallel_calls=tf.data.AUTOTUNE,
-                                                          deterministic=False).cache().prefetch(
+                                                          deterministic=False,
+                                                          drop_remainder=(True if "netvlad" in data[
+                                                              "model"].lower() else False)).cache("valid_cache").prefetch(
             tf.data.AUTOTUNE)
 
     history = model.fit(x=train_generator, verbose=1, callbacks=callbacks, epochs=data["epochs"],

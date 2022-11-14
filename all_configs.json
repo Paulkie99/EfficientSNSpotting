@@ -121,6 +121,63 @@
             "multi proc": true,
             "workers": 6,
             "queue size": 15
+        },
+        {
+            "model": "Netvlad++ b-features 3",
+            "model params": {},
+            "saved model": "",
+            "init epoch": 0,
+            "test only": false,
+            "MC iterations": 1,
+            "MC start": 0,
+            "CV iterations": false,
+            "CV start": 0,
+            "learning rate": 0.0005,
+            "decay": 0,
+            "batch size": 512,
+            "epochs": 50,
+            "patience": 10,
+            "train metrics": [
+                "auc",
+                "precision",
+                "recall",
+                "accuracy"
+            ],
+            "remove replays": false,
+            "balance classes": false,
+            "dataset path": "F:\\SoccerNet",
+            "data fraction": 1,
+            "feature fps": 1.0,
+            "frame dims": [
+                0,
+                8576
+            ],
+            "resize method": "",
+            "window length": 7,
+            "stride": 7,
+            "test stride": 1,
+            "NMS window": 20,
+            "NMS threshold": 0,
+            "jit": true,
+            "append training logs": false,
+            "multi proc": true,
+            "workers": 6,
+            "queue size": 15,
+            "config check exclusions": [
+                "saved model",
+                "init epoch",
+                "test only",
+                "MC start",
+                "CV start",
+                "train metrics",
+                "dataset path",
+                "test stride",
+                "jit",
+                "append training logs",
+                "multi proc",
+                "workers",
+                "queue size"
+            ]
         }
     ]
 }

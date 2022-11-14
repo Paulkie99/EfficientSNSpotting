@@ -5,14 +5,11 @@ from math import ceil
 import cv2
 import h5py
 from keras.metrics import AUC, Precision, Recall
-from keras import Input
-from keras.layers import Add
-from keras_nlp.layers import TransformerEncoder, SinePositionEncoding
-from numpy import float32, save, zeros, single, array, where
+from numpy import save, zeros, single, array, where
 from os.path import join, exists
 from keras.applications.inception_v3 import InceptionV3, preprocess_input
 from keras.models import Model, load_model
-from keras.layers import GlobalAveragePooling2D, Dense, Flatten
+from keras.layers import GlobalAveragePooling2D
 from tqdm import tqdm
 from keras.backend import clear_session
 from tabulate import tabulate
@@ -21,10 +18,6 @@ from skvideo.measure import scenedet
 from skvideo.io import vread
 from bisect import bisect_left
 import sys
-
-sys.path.append("./keras-resnet3d-master/resnet3d")
-from resnet3d import Resnet3DBuilder
-
 sys.path.append("./VGGish-master")
 
 from vggish import VGGish
@@ -44,7 +37,7 @@ def get_config(data):
     else:
         config_list = {"configs": []}
     for config in range(len(config_list["configs"])):
-        if isConfigEqual(data, config_list["configs"][config]):
+        if isConfigEqual(data, config_list["configs"][config], data["config check exclusions"]):
             data["model"] = config_list["configs"][config]["model"]
             return data
     data["model"] = data["model"] + ' ' + str(len(config_list["configs"]))
@@ -54,46 +47,14 @@ def get_config(data):
     return data
 
 
-def isConfigEqual(conf1, conf2):
-    if conf1["model"].split(' ') != conf2["model"].split(' ')[:-1]:
-        return False
-    if conf1["CV iterations"] != conf2["CV iterations"]:
-        return False
-    if conf1["MC iterations"] != conf2["MC iterations"]:
-        return False
-    if conf1["learning rate"] != conf2["learning rate"]:
-        return False
-    if conf1["decay"] != conf2["decay"]:
-        return False
-    if conf1["batch size"] != conf2["batch size"]:
-        return False
-    if conf1["epochs"] != conf2["epochs"]:
-        return False
-    if conf1["feature fps"] != conf2["feature fps"]:
-        return False
-    if conf1["frame dims"] != conf2["frame dims"]:
-        return False
-    if conf1["resize method"] != conf2["resize method"]:
-        return False
-    if conf1["window length"] != conf2["window length"]:
-        return False
-    if conf1["stride"] != conf2["stride"]:
-        return False
-    if conf1["patience"] != conf2["patience"]:
-        return False
-    if conf1["NMS window"] != conf2["NMS window"]:
-        return False
-    if conf1["NMS threshold"] != conf2["NMS threshold"]:
-        return False
-    if conf1["balance classes"] != conf2["balance classes"]:
-        return False
-    if conf1["remove replays"] != conf2["remove replays"]:
-        return False
-    if conf1["data fraction"] != conf2["data fraction"]:
-        return False
-    if conf1["model params"] != conf2["model params"]:
-        return False
-
+def isConfigEqual(conf1, conf2, exclusions):
+    for k, v in conf1.items():
+        if k == "model":
+            if v.split(' ') != conf2[k].split(' ')[:-1]:
+                return False
+        elif k not in exclusions:
+            if v != conf2[k]:
+                return False
     return True
 
 
@@ -446,71 +407,6 @@ def map_train_metrics_to_funcs(metrics):
     metrics[where(metrics == 'recall')[0]] = Recall(name='recall')
 
     return list(metrics)
-
-
-def get_custom_objects():
-    ret = {'TransformerEncoder': TransformerEncoder,
-           'SinePositionEncoding': SinePositionEncoding}
-    # for k, v in keras_transformer.get_custom_objects().items():
-    #     ret[k] = v
-    return ret
-
-
-def createTransformerModel(model: str = "ResNet", seq_length: int = 7, frame_dim=8576):
-    if "resnet" in model.lower():
-        shape = (seq_length, frame_dim)
-    elif "baidu" in model.lower():
-        shape = (seq_length, frame_dim)
-    inputs = Input(shape, dtype=float32)
-    embedding = SinePositionEncoding()(inputs)
-    outputs = Add()([inputs, embedding])
-
-    for i in range(3):
-        outputs = TransformerEncoder(intermediate_dim=64, num_heads=4)(outputs)
-
-    outputs = Flatten()(outputs)
-    # outputs = GlobalMaxPooling1D()(outputs)
-    # outputs = Dropout(0.5)(outputs)
-    outputs = Dense(18, activation='sigmoid')(outputs)
-
-    model = Model(inputs, outputs)
-
-    return model
-
-
-def createANN(dataset: str = "CSports", seq_length: int = 7, num_layers: int = 2, num_nodes: int = 512):
-    if "baidu" in dataset.lower():
-        shape = (seq_length, 8576)
-    elif "resnet" in dataset.lower():
-        shape = (seq_length, 512)
-
-    inputs = Input(shape, dtype=float32)
-    outputs = Flatten()(inputs)
-
-    for i in range(num_layers):
-        outputs = Dense(num_nodes)(outputs)
-
-    outputs = Dense(18, activation='sigmoid')(outputs)
-
-    model = Model(inputs, outputs)
-
-    return model
-
-
-def create_model(data):
-    if "resnet" in data["model"].lower():
-        model_ = Resnet3DBuilder.build_resnet_18((int(ceil(data["window length"] * data["feature fps"])),
-                                                  data["frame dims"][0], data["frame dims"][1], 3), 18,
-                                                 multilabel=True)
-    elif "baidu" in data["model"].lower():
-        model_ = createTransformerModel("baidu", seq_length=data["window length"],
-                                        frame_dim=data["frame dims"][1] - data["frame dims"][0])
-    elif "ann" in data["model"].lower():
-        model_ = createANN(dataset=data["dataset"], seq_length=data["window length"], **data["model params"])
-
-    model_.summary()
-
-    return model_
 
 
 if __name__ == '__main__':

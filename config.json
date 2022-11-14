@@ -1,5 +1,5 @@
 {
-    "model": "Baidu",
+    "model": "Netvlad++ b-features",
     "model params": {},
     "saved model": "",
     "init epoch": 0,
@@ -16,8 +16,8 @@
     "epochs": 50,
     "patience": 10,
     "train metrics": ["auc", "precision", "recall", "accuracy"],
-    "remove replays": true,
-    "balance classes": true,
+    "remove replays": false,
+    "balance classes": false,
     "dataset path": "F:\\SoccerNet",
     "data fraction": 1,
 
@@ -26,7 +26,7 @@
     "frame dims": [0, 8576],
     "resize method": "",
     "window length": 7,
-    "stride": 1,
+    "stride": 7,
     "test stride": 1,
 
 
@@ -38,5 +38,8 @@
     "append training logs": false,
     "multi proc": true,
     "workers": 6,
-    "queue size": 15
+    "queue size": 15,
+
+    "config check exclusions": ["saved model", "init epoch", "test only", "MC start", "CV start", "train metrics",
+    "dataset path", "test stride", "jit", "append training logs", "multi proc", "workers", "queue size"]
 }

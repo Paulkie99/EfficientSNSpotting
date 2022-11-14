@@ -3,8 +3,9 @@ import os.path
 import zipfile
 
 from SoccerNet.Evaluation.utils import INVERSE_EVENT_DICTIONARY_V2
-from util import release_gpu_memory, get_cv_data, create_model
-from data_generator import SoccerNetTestVideoGenerator, TransformerTrainFeatureGenerator
+from util import release_gpu_memory, get_cv_data
+from models import create_model
+from data_generator import SoccerNetTestVideoGenerator, DeepFeatureGenerator
 from numpy import argmax, minimum, maximum, transpose, copy
 from SoccerNet.Evaluation.ActionSpotting import evaluate
 from numpy import max as np_max
@@ -62,9 +63,9 @@ def test_soccernet(data, model_name: str = 'overall_best.hdf5', cv_iter: int = 0
         #                                               data["resize method"])
 
     elif "baidu" in data["model"].lower():
-        generator = TransformerTrainFeatureGenerator(data["window length"], data["test stride"], data["dataset path"],
+        generator = DeepFeatureGenerator(data["window length"], data["test stride"], data["dataset path"],
                                                      "baidu", "test", 1, 1, cv_iter, data["feature fps"],
-                                                     data["data fraction"])
+                                         data["data fraction"])
         train_generator = tf.data.Dataset.from_generator(generator, output_signature=(
             tf.TensorSpec(shape=(None, data["window length"], data["frame dims"][1] - data["frame dims"][0]),
                           dtype=tf.float32)

@@ -248,7 +248,7 @@ class SoccerNetTrainVideoDataGenerator(Sequence, SoccerNetTrainDataset):
         return samples, y
 
 
-class TransformerTrainFeatureGenerator:
+class DeepFeatureGenerator:
     def __init__(self, window_len: int = 7, stride: int = 7, base_path: str = "E:\\SoccerNet",
                  feature_type: str = "baidu", data_subset: str = "train", extraction_window=1,
                  extraction_stride: int = 1, cv_iter=0, fps=1, remove_replays=False, balance_classes=False,

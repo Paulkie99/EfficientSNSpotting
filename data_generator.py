@@ -249,18 +249,18 @@ class SoccerNetTrainVideoDataGenerator(Sequence, SoccerNetTrainDataset):
 
 
 class DeepFeatureGenerator:
-    def __init__(self, window_len: int = 7, stride: int = 7, base_path: str = "E:\\SoccerNet",
-                 feature_type: str = "baidu", data_subset: str = "train", extraction_window=1,
-                 extraction_stride: int = 1, cv_iter=0, fps=1, remove_replays=False, balance_classes=False,
-                 frame_dims=[0, 8576], data_fraction=1):
-        self.window_len = window_len
-        self.stride = stride
-        self.base_path = base_path
-        self.feature_type = f"{feature_type}_soccer_embeddings.npy"
+    def __init__(self, data, cv_iter=0, data_subset="train"):
+        self.window_len = data["window length"]
+        if data_subset != "test":
+            self.stride = data["stride"]
+        else:
+            self.stride = data["test stride"]
+        self.base_path = data["dataset path"]
+        self.feature_type = data["features"]
 
         self.data_subset = data_subset
         self.feature_paths = []
-        for vid in get_cv_data(data_subset, cv_iter, data_fraction):
+        for vid in get_cv_data(data_subset, cv_iter, data["data fraction"]):
             for half in range(1, 3):
                 self.feature_paths.append((join(self.base_path, vid), f"{half}"))
         self.replays = []
@@ -271,10 +271,10 @@ class DeepFeatureGenerator:
         self.num_classes = 17
         self.label_file = "Labels-v2.json"
         self.dict_event = EVENT_DICTIONARY_V2
-        self.fps = fps
-        self.remove_replays = remove_replays
-        self.balance_classes = balance_classes
-        self.frame_dims = frame_dims
+        self.fps = data["feature fps"]
+        self.remove_replays = data["remove replays"]
+        self.balance_classes = data["balance classes"]
+        self.frame_dims = data["frame dims"]
         self.overlap = self.window_len - self.stride
 
     def __data_generation(self, index):

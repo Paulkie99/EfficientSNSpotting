@@ -59,7 +59,7 @@ def test_soccernet(data, model_name: str = 'overall_best.hdf5', cv_iter: int = 0
     model.load_weights(os.path.join(path, "checkpoints", f'{cv_iter}', model_name))
 
     games = get_cv_data("test", cv_iter, data["data fraction"])
-    if "resnet" in data["model"].lower():
+    if "video" in data["features"].lower():
         # TODO change test generator
         pass
         # train_generator = SoccerNetTestVideoGenerator(game[1], half + 1, data["batch size"], data["dataset path"],
@@ -67,10 +67,8 @@ def test_soccernet(data, model_name: str = 'overall_best.hdf5', cv_iter: int = 0
         #                                               data["test stride"], data["frame dims"],
         #                                               data["resize method"])
 
-    elif "baidu" in data["model"].lower() or "netvlad" in data["model"].lower():
-        generator = DeepFeatureGenerator(data["window length"], data["test stride"], data["dataset path"],
-                                         "baidu", "test", 1, 1, cv_iter, data["feature fps"],
-                                         data["data fraction"])
+    elif "baidu" in data["features"].lower():
+        generator = DeepFeatureGenerator(data, cv_iter=cv_iter, data_subset="test")
         train_generator = tf.data.Dataset.from_generator(generator, output_signature=(
             tf.TensorSpec(shape=(None, data["window length"], data["frame dims"][1] - data["frame dims"][0]),
                           dtype=tf.float32)

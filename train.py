@@ -110,14 +110,7 @@ def train(data, iteration, cv_iter, queue) -> History:
         [remove(path) for path in glob.glob("*train_cache*")]
         [remove(path) for path in glob.glob("*valid_cache*")]
 
-        train_generator = DeepFeatureGenerator(feature_type="baidu", window_len=data["window length"],
-                                               stride=data["stride"], base_path=data["dataset path"],
-                                               data_subset="train", cv_iter=cv_iter,
-                                               fps=data["feature fps"],
-                                               remove_replays=data["remove replays"],
-                                               balance_classes=data["balance classes"],
-                                               frame_dims=data["frame dims"],
-                                               data_fraction=data["data fraction"])
+        train_generator = DeepFeatureGenerator(data, cv_iter=cv_iter, data_subset="train")
         train_generator = tf.data.Dataset.from_generator(train_generator, output_signature=(
             tf.TensorSpec(shape=(data["window length"],
                                  data["frame dims"][1] - data["frame dims"][0]), dtype=tf.float32),
@@ -127,14 +120,7 @@ def train(data, iteration, cv_iter, queue) -> History:
                                                                        num_parallel_calls=tf.data.AUTOTUNE,
                                                                        deterministic=False).prefetch(tf.data.AUTOTUNE)
 
-        validation_generator = DeepFeatureGenerator(feature_type="baidu", window_len=data["window length"],
-                                                    stride=data["stride"], base_path=data["dataset path"],
-                                                    data_subset="valid", cv_iter=cv_iter,
-                                                    fps=data["feature fps"],
-                                                    remove_replays=data["remove replays"],
-                                                    balance_classes=data["balance classes"],
-                                                    frame_dims=data["frame dims"],
-                                                    data_fraction=data["data fraction"])
+        validation_generator = DeepFeatureGenerator(data, cv_iter=cv_iter, data_subset="valid")
         validation_generator = tf.data.Dataset.from_generator(validation_generator, output_signature=(
             tf.TensorSpec(shape=(data["window length"],
                                  data["frame dims"][1] - data["frame dims"][0]), dtype=tf.float32),

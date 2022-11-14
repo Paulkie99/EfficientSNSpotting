@@ -3,17 +3,18 @@ from abc import ABC
 from math import ceil
 
 from keras import Input, Model
-from keras.activations import sigmoid
 from keras.layers import Add, Flatten, Dense, Dropout
 from keras_nlp.layers import TransformerEncoder, SinePositionEncoding
 from numpy import float32
 import sys
 
 from numpy.random import rand
-from tensorflow import matmul, reshape
-from tensorflow.python.keras.backend import softmax, sum as tf_sum, concatenate
+from tensorflow import matmul, reshape, sigmoid
+from tensorflow.compiler.tf2xla.python.xla import concatenate
+from tensorflow.python.ops.array_ops import shape
+from tensorflow.python.ops.math_ops import reduce_sum
 from tensorflow.python.ops.nn_impl import normalize
-
+from tensorflow.python.ops.nn_ops import softmax
 sys.path.append("./keras-resnet3d-master/resnet3d")
 from resnet3d import Resnet3DBuilder
 
@@ -72,17 +73,16 @@ def create_model(data):
         model_ = Resnet3DBuilder.build_resnet_18((int(ceil(data["window length"] * data["feature fps"])),
                                                   data["frame dims"][0], data["frame dims"][1], 3), 18,
                                                  multilabel=True)
-    elif "baidu" in data["model"].lower():
+    elif "transformer" in data["model"].lower():
         model_ = createTransformerModel("baidu", seq_length=data["window length"],
                                         frame_dim=data["frame dims"][1] - data["frame dims"][0])
     elif "ann" in data["model"].lower():
         model_ = createANN(dataset=data["dataset"], seq_length=data["window length"], **data["model params"])
     elif "netvlad" in data["model"].lower():
-        input = Input(shape=(int(data["window length"] * data["feature fps"]),
-                             data["frame dims"][1] - data["frame dims"][0]), batch_size=data["batch size"])
-        output = NetVLAD_PP(input_size=data["frame dims"][1] - data["frame dims"][0], window_size=data["window length"],
-                            framerate=data["feature fps"])(input)
-        model_ = Model(input, output)
+        model_ = NetVLAD_PP(input_size=data["frame dims"][1] - data["frame dims"][0], window_size=data["window length"],
+                            framerate=data["feature fps"])
+        model_(rand(data["batch size"], int(data["window length"] * data["feature fps"]),
+                    data["frame dims"][1] - data["frame dims"][0]))
 
     model_.summary()
 
@@ -101,25 +101,25 @@ class NetVLAD(Model, ABC):
         self.out_dim = cluster_size * feature_size
 
     def call(self, inputs, training=None, mask=None):
-        max_samples = inputs.shape[1]
+        max_samples = shape(inputs)[1]
 
         if self.add_batch_norm:
             inputs = normalize(inputs, ord=2, axis=2)[0]
 
-        inputs = reshape(inputs, [-1, self.feature_size])
+        inputs = reshape(inputs, (-1, self.feature_size))
         assignment = matmul(inputs, self.clusters)
 
         assignment = softmax(assignment, axis=1)
         assignment = reshape(assignment, (-1, max_samples, self.cluster_size))
 
-        a_sum = tf_sum(assignment, axis=-2, keepdims=True)
+        a_sum = reduce_sum(assignment, axis=-2, keepdims=True)
         a = a_sum * self.clusters2
 
-        assignment = reshape(assignment, (-1, assignment.shape[2], assignment.shape[1]))
+        assignment = reshape(assignment, (-1, shape(assignment)[2], shape(assignment)[1]))
 
         inputs = reshape(inputs, (-1, max_samples, self.feature_size))
         vlad = matmul(assignment, inputs)
-        vlad = reshape(vlad, (-1, vlad.shape[2], vlad.shape[1]))
+        vlad = reshape(vlad, (-1, shape(vlad)[2], shape(vlad)[1]))
         vlad = vlad - a
 
         vlad = normalize(vlad)[0]
@@ -156,14 +156,14 @@ class NetVLAD_PP(Model, ABC):
             self.load_weights(weights)
 
     def call(self, inputs, training=None, mask=None):
-        BS, FR, IC = inputs.shape
+        BS, FR, IC = shape(inputs)[0], shape(inputs)[1], shape(inputs)[2]
 
         if not IC == 512:
             inputs = reshape(inputs, (BS * FR, IC))
             inputs = self.feature_extractor(inputs)
             inputs = reshape(inputs, (BS, FR, -1))
 
-        nb_frames_50 = int(inputs.shape[1] / 2)
+        nb_frames_50 = int(FR / 2)
         inputs_before_pooled = self.pool_layer_before(inputs[:, :nb_frames_50, :])
         inputs_after_pooled = self.pool_layer_after(inputs[:, nb_frames_50:, :])
         inputs_pooled = concatenate((inputs_before_pooled, inputs_after_pooled), axis=1)

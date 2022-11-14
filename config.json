@@ -1,5 +1,6 @@
 {
     "model": "Netvlad++ b-features",
+    "features":  "baidu_soccer_embeddings.npy",
     "model params": {},
     "saved model": "",
     "init epoch": 0,
@@ -36,9 +37,7 @@
 
     "jit": true,
     "append training logs": false,
-    "multi proc": true,
-    "workers": 6,
-    "queue size": 15,
+    "workers": 3,
 
     "config check exclusions": ["saved model", "init epoch", "test only", "MC start", "CV start", "train metrics",
     "dataset path", "test stride", "jit", "append training logs", "multi proc", "workers", "queue size"]

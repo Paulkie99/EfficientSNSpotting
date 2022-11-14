@@ -42,7 +42,7 @@ def train(data, iteration, cv_iter, queue) -> History:
     makedirs(checkpoints_dir, exist_ok=True)
     best_checkpointer = ModelCheckpoint(
         filepath=join(checkpoints_dir, 'best_' + iteration + '.hdf5'),
-        verbose=1,
+        verbose=(1 if iteration == "0" else 0),
         save_best_only=True, save_weights_only=True)
 
     # Logging
@@ -53,21 +53,24 @@ def train(data, iteration, cv_iter, queue) -> History:
     # Early stopping
     early_stopper = EarlyStopping(patience=data["patience"], verbose=1)
 
-    # Tensorboard
-    log_dir = join("models", "SoccerNet", data["model"], 'tensorboard', f'{cv_iter}')
-    if exists(log_dir):
-        shutil.rmtree(log_dir)
-    makedirs(log_dir)
-    tboard_callback = TensorBoard(log_dir=log_dir,
-                                  profile_batch='2000,2100')
-    tb_prog = program.TensorBoard()
-    tb_prog.configure(argv=[None, '--logdir',
-                            join(getcwd(), "models", "SoccerNet", data["model"], 'tensorboard', f'{cv_iter}')])
-    tb_prog.launch()
+    callbacks = [best_checkpointer, csv_logger, early_stopper]
 
-    callbacks = [best_checkpointer, csv_logger, early_stopper, tboard_callback]
+    if iteration == "0":
+        # Tensorboard
+        log_dir = join("models", "SoccerNet", data["model"], 'tensorboard', f'{cv_iter}')
+        if exists(log_dir):
+            shutil.rmtree(log_dir)
+        makedirs(log_dir)
+        tboard_callback = TensorBoard(log_dir=log_dir,
+                                      profile_batch='2000,2100')
+        tb_prog = program.TensorBoard()
+        tb_prog.configure(argv=[None, '--logdir',
+                                join(getcwd(), "models", "SoccerNet", data["model"], 'tensorboard', f'{cv_iter}',
+                                     f'{iteration}')])
+        tb_prog.launch()
+        callbacks.append(tboard_callback)
 
-    if 'resnet' in data["model"].lower():  # All images cannot fit into memory, a generator must be used for training.
+    if 'video' in data["features"].lower():  # All images cannot fit into memory, a generator must be used for training.
         params = {
             'train': 'train',
             'data_path': data["dataset path"],
@@ -103,7 +106,7 @@ def train(data, iteration, cv_iter, queue) -> History:
         # validation_generator = validation_generator.batch(batch_size, num_parallel_calls=tf.data.AUTOTUNE,
         #                                                   deterministic=False).prefetch(tf.data.AUTOTUNE)
 
-    elif "baidu" in data["model"].lower() or "netvlad" in data["model"].lower():
+    elif "baidu" in data["features"].lower():
         [remove(path) for path in glob.glob("*train_cache*")]
         [remove(path) for path in glob.glob("*valid_cache*")]
 
@@ -122,12 +125,7 @@ def train(data, iteration, cv_iter, queue) -> History:
         ))
         train_generator = train_generator.take(-1).shuffle(2000).batch(data["batch size"],
                                                                        num_parallel_calls=tf.data.AUTOTUNE,
-                                                                       deterministic=False,
-                                                                       drop_remainder=(
-                                                                           True if "netvlad" in
-                                                                                   data[
-                                                                                       "model"].lower() else False)).prefetch(
-            tf.data.AUTOTUNE)
+                                                                       deterministic=False).prefetch(tf.data.AUTOTUNE)
 
         validation_generator = DeepFeatureGenerator(feature_type="baidu", window_len=data["window length"],
                                                     stride=data["stride"], base_path=data["dataset path"],
@@ -145,15 +143,11 @@ def train(data, iteration, cv_iter, queue) -> History:
 
         validation_generator = validation_generator.batch(data["batch size"],
                                                           num_parallel_calls=tf.data.AUTOTUNE,
-                                                          deterministic=False,
-                                                          drop_remainder=(True if "netvlad" in data[
-                                                              "model"].lower() else False)).prefetch(
-            tf.data.AUTOTUNE)
+                                                          deterministic=False).prefetch(tf.data.AUTOTUNE)
 
-    history = model.fit(x=train_generator, verbose=1, callbacks=callbacks, epochs=data["epochs"],
-                        use_multiprocessing=data["multi proc"],
-                        workers=data["workers"], validation_data=validation_generator,
-                        initial_epoch=data["init epoch"], validation_freq=1, max_queue_size=data["queue size"])
+    history = model.fit(x=train_generator, verbose=(1 if iteration == "0" else 0), callbacks=callbacks, epochs=data["epochs"],
+                        validation_data=validation_generator,
+                        initial_epoch=data["init epoch"], validation_freq=1)
 
     [remove(path) for path in glob.glob("*train_cache*")]
     [remove(path) for path in glob.glob("*valid_cache*")]
@@ -172,8 +166,6 @@ def train_for_iterations(data):
     else:
         cv_iterations = 1
 
-    queue = multiprocessing.Queue()
-
     for cv_iter in tqdm(range(data["CV start"], cv_iterations)):
         save_metrics = {}
         for k in data["train metrics"]:
@@ -186,31 +178,55 @@ def train_for_iterations(data):
         save_metrics["best_val_iter"] = 0
         save_metrics["test a-mAP"] = []
 
-        for i in range(data["MC start"], data["MC iterations"]):
+        for i in range(data["MC start"], data["MC iterations"], data["workers"]):
             print(f"Starting MC iteration {i + 1}/{data['MC iterations']}, of CV iteration "
                   f"{cv_iter + 1}/{cv_iterations}")
 
-            p = multiprocessing.Process(target=train, args=(data, i, cv_iter, queue))
-            p.start()
-            history = queue.get()
-            p.join()
-            print("Joined")
+            stop_idx = min(i + data["workers"], data["MC iterations"])
 
-            save_metrics["epochs"].append(len(history['val_loss']))
-            index_of_min_validation_loss = argmin(history['val_loss'])
-            for k in history.keys():
-                save_metrics[k].append(history[k][index_of_min_validation_loss])
+            # Start training
+            processes = [object for worker in range(i, stop_idx)]
+            queues = [multiprocessing.Queue() for worker in range(i, stop_idx)]
+            histories = [0] * (stop_idx - i)
+            for j in range(i, stop_idx):
+                processes[j - i] = multiprocessing.Process(target=train, args=(data, j, cv_iter, queues[j - i]))
+                processes[j - i].start()
 
-            test_accuracy = test_soccernet(data, f'best_{i}.hdf5', cv_iter=cv_iter)
-            save_metrics["test a-mAP"].append(test_accuracy)
+            # Wait for training to finish
+            for j in range(i, stop_idx):
+                histories[j - i] = queues[j - i].get()
+                processes[j - i].join()
+                print(f"Process {j} joined")
 
-            if min(history['val_loss']) < save_metrics["best_val_loss"]:
-                save_metrics["best_val_loss"] = min(history['val_loss'])
-                save_metrics["best_val_iter"] = i
-                rename(join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}', f'best_{i}.hdf5'),
-                       join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}', f'overall_best.hdf5'))
-            else:
-                remove(join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}', f'best_{i}.hdf5'))
+            # Start testing
+            test_queues = [multiprocessing.Queue() for worker in range(i, stop_idx)]
+            for j in range(i, min(i + data["workers"], data["MC iterations"])):
+                processes[j - i] = multiprocessing.Process(target=test_soccernet, args=(data, f'best_{j}.hdf5', cv_iter,
+                                                                                        test_queues[j - i]))
+                processes[j - i].start()
+
+            # Record metrics when testing is finished
+            for j in range(i, stop_idx):
+                test_accuracy = test_queues[j - i].get()
+                processes[j - i].join()
+                history = histories[j - i]
+
+                save_metrics["epochs"].append(len(history['val_loss']))
+                index_of_min_validation_loss = argmin(history['val_loss'])
+                for k in history.keys():
+                    save_metrics[k].append(history[k][index_of_min_validation_loss])
+
+                save_metrics["test a-mAP"].append(test_accuracy)
+
+                if min(history['val_loss']) < save_metrics["best_val_loss"]:
+                    save_metrics["best_val_loss"] = min(history['val_loss'])
+                    save_metrics["best_val_iter"] = j
+                    if exists(join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}', f'overall_best.hdf5')):
+                        remove(join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}', f'overall_best.hdf5'))
+                    rename(join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}', f'best_{j}.hdf5'),
+                           join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}', f'overall_best.hdf5'))
+                else:
+                    remove(join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}', f'best_{j}.hdf5'))
 
         to_save = {}
         for k in save_metrics.keys():
@@ -226,15 +242,13 @@ def train_for_iterations(data):
             json.dump(to_save, f, indent=4)
 
     cv_avg_metrics = {}
-    with open(join('models', "SoccerNet", data["model"], "results", "CV", f'avg_metrics_cv{0}.json'), 'r') as f:
-        metrics = json.load(f)
-        for k in metrics.keys():
-            cv_avg_metrics[k] = []
     for cv_iter in range(cv_iterations):
         with open(join('models', "SoccerNet", data["model"], "results", "CV", f'avg_metrics_cv{cv_iter}.json'),
                   'r') as f:
             metrics = json.load(f)
             for k in metrics.keys():
+                if cv_avg_metrics.get(k, None) is None:
+                    cv_avg_metrics[k] = []
                 cv_avg_metrics[k].append(metrics[k])
 
     for k in cv_avg_metrics.keys():
@@ -249,12 +263,12 @@ def train_for_iterations(data):
     cv_avg_metrics["best iter"] = cv_avg_metrics["best_val_iter"][cv_avg_metrics["best cv iter"]]
     cv_avg_metrics["best valid loss"] = cv_avg_metrics["best_val_loss"][cv_avg_metrics["best cv iter"]]
 
+    with open(join('models', "SoccerNet", data["model"], "results", "CV", f'avg_metrics_all_cv.json'), 'w') as f:
+        json.dump(cv_avg_metrics, f, indent=4)
+
     for k in range(cv_iterations):
         if k != cv_avg_metrics["best cv iter"]:
             remove(join('models', "SoccerNet", data["model"], "checkpoints", f'{k}', 'overall_best.hdf5'))
-
-    with open(join('models', "SoccerNet", data["model"], "results", "CV", f'avg_metrics_all_cv.json'), 'w') as f:
-        json.dump(cv_avg_metrics, f, indent=4)
 
 
 if __name__ == '__main__':

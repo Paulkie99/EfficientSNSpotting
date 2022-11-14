@@ -251,7 +251,7 @@ def save_test_latex_table(data_):
     data = []
     for base, dirs, files in os.walk(join("models", "SoccerNet")):
         for file in files:
-            if file == "results.json":
+            if file == "best_results.json":
                 path = join(base, file)
                 with open(path, 'r') as f:
                     jdata = json.load(f)

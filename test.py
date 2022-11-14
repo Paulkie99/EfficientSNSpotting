@@ -1,5 +1,6 @@
 import json
 import os.path
+import shutil
 import zipfile
 
 from SoccerNet.Evaluation.utils import INVERSE_EVENT_DICTIONARY_V2
@@ -9,7 +10,6 @@ from data_generator import SoccerNetTestVideoGenerator, DeepFeatureGenerator
 from numpy import argmax, minimum, maximum, transpose, copy
 from SoccerNet.Evaluation.ActionSpotting import evaluate
 from numpy import max as np_max
-from tqdm import tqdm
 import tensorflow as tf
 
 
@@ -42,9 +42,14 @@ def get_spot_from_NMS(class_predictions_whole_vid, window=30, thresh=0.5):
     return transpose([indices, max_vals])
 
 
-def test_soccernet(data, model_name: str = 'overall_best.hdf5', cv_iter: int = 0):
+def test_soccernet(data, model_name: str = 'overall_best.hdf5', cv_iter: int = 0, queue=None):
     os.makedirs(os.path.join("models", "SoccerNet", data["model"]), exist_ok=True)
     path = os.path.join("models", "SoccerNet", data["model"])
+
+    if model_name == "overall_best.hdf5":
+        iteration = -1
+    else:
+        iteration = int(model_name.split('.')[0].split('_')[1])
 
     if not os.path.exists(os.path.join(path, "checkpoints", f'{cv_iter}', model_name)):
         raise Exception(
@@ -53,7 +58,7 @@ def test_soccernet(data, model_name: str = 'overall_best.hdf5', cv_iter: int = 0
     model = create_model(data)
     model.load_weights(os.path.join(path, "checkpoints", f'{cv_iter}', model_name))
 
-    games = get_cv_data("test", cv_iter, 1)
+    games = get_cv_data("test", cv_iter, data["data fraction"])
     if "resnet" in data["model"].lower():
         # TODO change test generator
         pass
@@ -78,9 +83,7 @@ def test_soccernet(data, model_name: str = 'overall_best.hdf5', cv_iter: int = 0
     all_pred_y = []
     print("Testing")
     for x in train_generator:
-        all_pred_y.append(model.predict(x=x, batch_size=data["batch size"], verbose=0,
-                                        use_multiprocessing=data["multi proc"], workers=data["workers"],
-                                        max_queue_size=data["queue size"])[:, 1:])
+        all_pred_y.append(model.predict(x=x, batch_size=data["batch size"], verbose=0)[:, 1:])
 
     assert len(all_pred_y) == 200
 
@@ -88,7 +91,7 @@ def test_soccernet(data, model_name: str = 'overall_best.hdf5', cv_iter: int = 0
     del train_generator
     release_gpu_memory()
 
-    for game in tqdm(enumerate(games)):
+    for game in enumerate(games):
         json_data = dict()
         json_data["UrlLocal"] = game[1]
         json_data["predictions"] = list()
@@ -116,22 +119,73 @@ def test_soccernet(data, model_name: str = 'overall_best.hdf5', cv_iter: int = 0
                     prediction_data["confidence"] = str(confidence)
                     json_data["predictions"].append(prediction_data)
 
-        os.makedirs(os.path.join(path, "outputs_test", game[1]), exist_ok=True)
-        if os.path.exists(os.path.join(path, "outputs_test", game[1], "results_spotting.json")):
-            os.remove(os.path.join(path, "outputs_test", game[1], "results_spotting.json"))
-        with open(os.path.join(path, "outputs_test", game[1], "results_spotting.json"),
+        os.makedirs(os.path.join(path, "outputs_test", f'{iteration}', game[1]), exist_ok=True)
+        if os.path.exists(os.path.join(path, "outputs_test", f'{iteration}', game[1], "results_spotting.json")):
+            os.remove(os.path.join(path, "outputs_test", f'{iteration}', game[1], "results_spotting.json"))
+        with open(os.path.join(path, "outputs_test", f'{iteration}', game[1], "results_spotting.json"),
                   'w') as output_file:
             json.dump(json_data, output_file, indent=4)
 
     results = evaluate(SoccerNet_path=data["dataset path"],
-                       Predictions_path=os.path.join(path, "outputs_test"),
+                       Predictions_path=os.path.join(path, "outputs_test", f'{iteration}'),
                        split="test",
                        prediction_file="results_spotting.json",
-                       version=2)
+                       version=2, cv_iter=cv_iter, data_fraction=data["data fraction"],
+                       framerate=data["feature fps"])
+
+    if iteration == -1:
+        with open(os.path.join(path, "outputs_test", "best_results.json"), 'w') as f:
+            json.dump(results, f, indent=4)
+    else:
+        shutil.rmtree(os.path.join(path, "outputs_test", f'{iteration}'))
 
     print(results)
 
-    with open(os.path.join('models', "SoccerNet", data["model"], 'results.json'), 'w') as f:
-        json.dump(results, f, indent=4)
+    if queue is not None:
+        queue.put(results["a_mAP"])
+    else:
+        return results["a_mAP"]
 
-    return results["a_mAP"]
+
+if __name__ == "__main__":
+    data = {
+        "model": "Netvlad++ b-features test 4",
+        "model params": {},
+        "saved model": "",
+        "init epoch": 0,
+
+        "test only": False,
+        "MC iterations": 5,
+        "MC start": 0,
+        "CV iterations": True,
+        "CV start": 0,
+        "learning rate": 1e-4,
+        "decay": 0,
+        "batch size": 256,
+        "epochs": 30,
+        "patience": 5,
+        "train metrics": ["auc", "precision", "recall", "accuracy"],
+        "remove replays": False,
+        "balance classes": False,
+        "dataset path": "F:\\SoccerNet",
+        "data fraction": 0.5,
+
+        "feature fps": 1.0,
+        "frame dims": [0, 8576],
+        "resize method": "",
+        "window length": 7,
+        "stride": 7,
+        "test stride": 1,
+
+        "NMS window": 30,
+        "NMS threshold": 0,
+
+        "jit": True,
+        "append training logs": False,
+        "workers": 3,
+
+        "config check exclusions": ["saved model", "init epoch", "test only", "MC start", "CV start", "train metrics",
+                                    "dataset path", "test stride", "jit", "append training logs", "multi proc",
+                                    "workers", "queue size"]
+    }
+    test_soccernet(data)

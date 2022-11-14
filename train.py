@@ -1,11 +1,11 @@
 import glob
 import multiprocessing
-import os
 import shutil
-
+from tensorboard import program
 from tensorflow.keras.optimizers import Adam
 from keras.callbacks import ModelCheckpoint, EarlyStopping, CSVLogger, History, TensorBoard
-from os.path import join
+from os.path import join, exists
+from os import getcwd, remove, makedirs, rename
 import tensorflow as tf
 from tqdm import tqdm
 from data_generator import SoccerNetTrainVideoDataGenerator, DeepFeatureGenerator, \
@@ -38,8 +38,8 @@ def train(data, iteration, cv_iter, queue) -> History:
     Define checkpoints such that the model will be saved after each epoch. Save both best model and latest so that
     training may continue but we always have access to the best model.
     """
-    checkpoints_dir = os.path.join("models", "SoccerNet", data["model"], "checkpoints", f'{cv_iter}')
-    os.makedirs(checkpoints_dir, exist_ok=True)
+    checkpoints_dir = join("models", "SoccerNet", data["model"], "checkpoints", f'{cv_iter}')
+    makedirs(checkpoints_dir, exist_ok=True)
     best_checkpointer = ModelCheckpoint(
         filepath=join(checkpoints_dir, 'best_' + iteration + '.hdf5'),
         verbose=1,
@@ -47,7 +47,7 @@ def train(data, iteration, cv_iter, queue) -> History:
 
     # Logging
     log_dir = join("models", "SoccerNet", data["model"], 'logs', f'{cv_iter}')
-    os.makedirs(log_dir, exist_ok=True)
+    makedirs(log_dir, exist_ok=True)
     csv_logger = CSVLogger(join(log_dir, 'training_' + iteration + '.log'), append=data["append training logs"])
 
     # Early stopping
@@ -55,11 +55,15 @@ def train(data, iteration, cv_iter, queue) -> History:
 
     # Tensorboard
     log_dir = join("models", "SoccerNet", data["model"], 'tensorboard', f'{cv_iter}')
-    if os.path.exists(log_dir):
+    if exists(log_dir):
         shutil.rmtree(log_dir)
-    os.makedirs(log_dir)
+    makedirs(log_dir)
     tboard_callback = TensorBoard(log_dir=log_dir,
                                   profile_batch='2000,2100')
+    tb_prog = program.TensorBoard()
+    tb_prog.configure(argv=[None, '--logdir',
+                            join(getcwd(), "models", "SoccerNet", data["model"], 'tensorboard', f'{cv_iter}')])
+    tb_prog.launch()
 
     callbacks = [best_checkpointer, csv_logger, early_stopper, tboard_callback]
 
@@ -100,8 +104,8 @@ def train(data, iteration, cv_iter, queue) -> History:
         #                                                   deterministic=False).prefetch(tf.data.AUTOTUNE)
 
     elif "baidu" in data["model"].lower() or "netvlad" in data["model"].lower():
-        [os.remove(path) for path in glob.glob("*train_cache*")]
-        [os.remove(path) for path in glob.glob("*valid_cache*")]
+        [remove(path) for path in glob.glob("*train_cache*")]
+        [remove(path) for path in glob.glob("*valid_cache*")]
 
         train_generator = DeepFeatureGenerator(feature_type="baidu", window_len=data["window length"],
                                                stride=data["stride"], base_path=data["dataset path"],
@@ -116,13 +120,13 @@ def train(data, iteration, cv_iter, queue) -> History:
                                  data["frame dims"][1] - data["frame dims"][0]), dtype=tf.float32),
             tf.TensorSpec(shape=(18,), dtype=tf.uint8)
         ))
-        train_generator = train_generator.take(-1).cache("train_cache").shuffle(2000).batch(data["batch size"],
-                                                                                            num_parallel_calls=tf.data.AUTOTUNE,
-                                                                                            deterministic=False,
-                                                                                            drop_remainder=(
-                                                                                                True if "netvlad" in
-                                                                                                        data[
-                                                                                                            "model"].lower() else False)).prefetch(
+        train_generator = train_generator.take(-1).shuffle(2000).batch(data["batch size"],
+                                                                       num_parallel_calls=tf.data.AUTOTUNE,
+                                                                       deterministic=False,
+                                                                       drop_remainder=(
+                                                                           True if "netvlad" in
+                                                                                   data[
+                                                                                       "model"].lower() else False)).prefetch(
             tf.data.AUTOTUNE)
 
         validation_generator = DeepFeatureGenerator(feature_type="baidu", window_len=data["window length"],
@@ -143,7 +147,7 @@ def train(data, iteration, cv_iter, queue) -> History:
                                                           num_parallel_calls=tf.data.AUTOTUNE,
                                                           deterministic=False,
                                                           drop_remainder=(True if "netvlad" in data[
-                                                              "model"].lower() else False)).cache("valid_cache").prefetch(
+                                                              "model"].lower() else False)).prefetch(
             tf.data.AUTOTUNE)
 
     history = model.fit(x=train_generator, verbose=1, callbacks=callbacks, epochs=data["epochs"],
@@ -151,8 +155,8 @@ def train(data, iteration, cv_iter, queue) -> History:
                         workers=data["workers"], validation_data=validation_generator,
                         initial_epoch=data["init epoch"], validation_freq=1, max_queue_size=data["queue size"])
 
-    [os.remove(path) for path in glob.glob("*train_cache*")]
-    [os.remove(path) for path in glob.glob("*valid_cache*")]
+    [remove(path) for path in glob.glob("*train_cache*")]
+    [remove(path) for path in glob.glob("*valid_cache*")]
 
     del train_generator
     del validation_generator
@@ -203,10 +207,10 @@ def train_for_iterations(data):
             if min(history['val_loss']) < save_metrics["best_val_loss"]:
                 save_metrics["best_val_loss"] = min(history['val_loss'])
                 save_metrics["best_val_iter"] = i
-                os.rename(join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}', f'best_{i}.hdf5'),
-                          join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}', f'overall_best.hdf5'))
+                rename(join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}', f'best_{i}.hdf5'),
+                       join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}', f'overall_best.hdf5'))
             else:
-                os.remove(join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}', f'best_{i}.hdf5'))
+                remove(join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}', f'best_{i}.hdf5'))
 
         to_save = {}
         for k in save_metrics.keys():
@@ -216,7 +220,7 @@ def train_for_iterations(data):
             else:
                 to_save[k] = save_metrics[k]
 
-        os.makedirs(join('models', "SoccerNet", data["model"], "results", "CV"), exist_ok=True)
+        makedirs(join('models', "SoccerNet", data["model"], "results", "CV"), exist_ok=True)
         with open(join('models', "SoccerNet", data["model"], "results", "CV", f'avg_metrics_cv{cv_iter}.json'),
                   'w') as f:
             json.dump(to_save, f, indent=4)
@@ -247,7 +251,7 @@ def train_for_iterations(data):
 
     for k in range(cv_iterations):
         if k != cv_avg_metrics["best cv iter"]:
-            os.remove(join('models', "SoccerNet", data["model"], "checkpoints", f'{k}', 'overall_best.hdf5'))
+            remove(join('models', "SoccerNet", data["model"], "checkpoints", f'{k}', 'overall_best.hdf5'))
 
     with open(join('models', "SoccerNet", data["model"], "results", "CV", f'avg_metrics_all_cv.json'), 'w') as f:
         json.dump(cv_avg_metrics, f, indent=4)

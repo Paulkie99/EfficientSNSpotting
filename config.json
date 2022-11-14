@@ -6,20 +6,20 @@
 
 
     "test only": false,
-    "MC iterations": 1,
+    "MC iterations": 5,
     "MC start": 0,
-    "CV iterations": false,
+    "CV iterations": true,
     "CV start": 0,
-    "learning rate": 5e-4,
+    "learning rate": 1e-4,
     "decay": 0,
-    "batch size": 512,
-    "epochs": 50,
-    "patience": 10,
+    "batch size": 256,
+    "epochs": 30,
+    "patience": 5,
     "train metrics": ["auc", "precision", "recall", "accuracy"],
     "remove replays": false,
     "balance classes": false,
     "dataset path": "F:\\SoccerNet",
-    "data fraction": 1,
+    "data fraction": 0.5,
 
 
     "feature fps": 1.0,
@@ -30,7 +30,7 @@
     "test stride": 1,
 
 
-    "NMS window": 20,
+    "NMS window": 30,
     "NMS threshold": 0,
 
 

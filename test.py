@@ -62,9 +62,9 @@ def test_soccernet(data, model_name: str = 'overall_best.hdf5', cv_iter: int = 0
         #                                               data["test stride"], data["frame dims"],
         #                                               data["resize method"])
 
-    elif "baidu" in data["model"].lower():
+    elif "baidu" in data["model"].lower() or "netvlad" in data["model"].lower():
         generator = DeepFeatureGenerator(data["window length"], data["test stride"], data["dataset path"],
-                                                     "baidu", "test", 1, 1, cv_iter, data["feature fps"],
+                                         "baidu", "test", 1, 1, cv_iter, data["feature fps"],
                                          data["data fraction"])
         train_generator = tf.data.Dataset.from_generator(generator, output_signature=(
             tf.TensorSpec(shape=(None, data["window length"], data["frame dims"][1] - data["frame dims"][0]),
@@ -103,7 +103,8 @@ def test_soccernet(data, model_name: str = 'overall_best.hdf5', cv_iter: int = 0
                     confidence = spot[1]
 
                     frame_index = spot[0]
-                    total_seconds = (frame_index * data["test stride"] + data["window length"] / 2) / data["feature fps"]
+                    total_seconds = (frame_index * data["test stride"] + data["window length"] / 2) / data[
+                        "feature fps"]
                     seconds = int(total_seconds % 60)
                     minutes = int(total_seconds // 60)
 

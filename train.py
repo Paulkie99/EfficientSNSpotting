@@ -65,8 +65,7 @@ def train(data, iteration, cv_iter, queue) -> History:
                                       profile_batch='2000,2100')
         tb_prog = program.TensorBoard()
         tb_prog.configure(argv=[None, '--logdir',
-                                join(getcwd(), "models", "SoccerNet", data["model"], 'tensorboard', f'{cv_iter}',
-                                     f'{iteration}')])
+                                join(getcwd(), "models", "SoccerNet", data["model"], 'tensorboard', f'{cv_iter}')])
         tb_prog.launch()
         callbacks.append(tboard_callback)
 

@@ -1,6 +1,7 @@
 import gc
 import json
 import os
+from itertools import cycle, islice
 from math import ceil
 import cv2
 import h5py
@@ -84,7 +85,7 @@ def getDuration(video_path):
 
 
 def getDurationSeconds(video_path):
-    """Get the duration (in frames) for a video.
+    """Get the duration (in seconds) for a video.
 
     Keyword arguments:
     video_path -- the path of the video
@@ -146,47 +147,25 @@ def get_cv_data(subset, cv_iter, data_fraction):
     """
     Read appropriate data split.
     """
-    if cv_iter > 0:
-        train_paths = getListGames(["train"])
-        valid_paths = getListGames(["valid"])
-        test_paths = getListGames(["test"])
-        if subset == "train":
-            if cv_iter == 1:
-                ret = train_paths[100:]
-                ret.extend(valid_paths)
-            elif cv_iter == 2:
-                ret = train_paths[200:]
-                ret.extend(valid_paths)
-                ret.extend(test_paths)
-            elif cv_iter == 3:
-                ret = valid_paths
-                ret.extend(test_paths)
-                ret.extend(train_paths[:100])
-            elif cv_iter == 4:
-                ret = test_paths
-                ret.extend(train_paths[:200])
-        if subset == "valid":
-            if cv_iter == 1:
-                ret = test_paths
-            elif cv_iter == 2:
-                ret = train_paths[:100]
-            elif cv_iter == 3:
-                ret = train_paths[100:200]
-            elif cv_iter == 4:
-                ret = train_paths[200:300]
-        if subset == "test":
-            if cv_iter == 1:
-                ret = train_paths[:100]
-            elif cv_iter == 2:
-                ret = train_paths[100:200]
-            elif cv_iter == 3:
-                ret = train_paths[200:300]
-            elif cv_iter == 4:
-                ret = valid_paths
-        return ret[:int(data_fraction * len(ret))]
-    else:
-        games = getListGames([subset])
-        return games[:int(data_fraction * len(games))]
+    paths = getListGames(["train"])
+    paths.extend(getListGames(["valid"]))
+    paths.extend(getListGames(["test"]))
+    assert len(paths) == 500
+    paths = cycle(paths)
+    ret_paths = []
+    # folds = 5
+    # thus, each fold is 100 samples in size
+    shift = 100 * cv_iter
+    if subset == "train":  # training set is 300 samples
+        ret_paths = list(islice(paths, shift, shift + 300))
+    elif subset == "valid":  # valid set is offset by 300 samples
+        shift += 300
+        ret_paths = list(islice(paths, shift, shift + 100))
+    elif subset == "test":  # test set is offset by 400 samples
+        shift += 400
+        ret_paths = list(islice(paths, shift, shift + 100))
+
+    return ret_paths[:int(data_fraction * len(ret_paths))]
 
 
 def crop_frame(ret):

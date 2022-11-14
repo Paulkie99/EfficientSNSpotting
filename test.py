@@ -83,7 +83,7 @@ def test_soccernet(data, model_name: str = 'overall_best.hdf5', cv_iter: int = 0
     for x in train_generator:
         all_pred_y.append(model.predict(x=x, batch_size=data["batch size"], verbose=0)[:, 1:])
 
-    assert len(all_pred_y) == 200
+    assert len(all_pred_y) == int(100 * data["data fraction"]) * 2
 
     del model
     del train_generator

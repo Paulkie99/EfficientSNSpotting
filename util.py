@@ -1,12 +1,13 @@
 import gc
 import json
 import os
+import shutil
 from itertools import cycle, islice
 from math import ceil
 import cv2
 import h5py
 from keras.metrics import AUC, Precision, Recall
-from numpy import save, zeros, single, array, where
+from numpy import save, zeros, single, array, where, load
 from os.path import join, exists
 from keras.applications.inception_v3 import InceptionV3, preprocess_input
 from keras.models import Model, load_model
@@ -390,12 +391,17 @@ def map_train_metrics_to_funcs(metrics):
 
 if __name__ == '__main__':
     # delete_soccernet_frames()
-    check_extract_soccernet_frames()
-# for game in tqdm(getListGames(["train", "valid", "test"])):
-#     source_path = join("E:\\SoccerNet", game)
-#     dest_path = join("F:\\SoccerNet", game)
-#
-#     if not exists(join(dest_path, "Labels-cameras.json")):
-#         shutil.copy(join(source_path, "Labels-cameras.json"), join(dest_path, "Labels-cameras.json"))
-#     if not exists(join(dest_path, "Labels-v2.json")):
-#         shutil.copy(join(source_path, "Labels-v2.json"), join(dest_path, "Labels-v2.json"))
+    # check_extract_soccernet_frames()
+    for game in tqdm(getListGames(["train", "valid", "test", "challenge"])):
+        source_path = join("F:\\SoccerNet", game)
+        dest_path = join("C:\\Users\\pj\\Documents\\Masters\\EfficientSNSpotting\\SoccerNet", game)
+        os.makedirs(dest_path, exist_ok=True)
+        for half in range(1, 3):
+            if not exists(join(dest_path, f"{half}_baidu_soccer_embeddings.h5")):
+                with h5py.File(join(dest_path, f"{half}_baidu_soccer_embeddings.h5"), 'w') as h5f:
+                    h5f.create_dataset('baidu', data=load(join(source_path, f"{half}_baidu_soccer_embeddings.npy")))
+                os.remove(join(source_path, f"{half}_baidu_soccer_embeddings.npy"))
+        if not exists(join(dest_path, f"Labels-cameras.json")) and exists(join(source_path, f"Labels-cameras.json")):
+            shutil.copy(join(source_path, f"Labels-cameras.json"), join(dest_path, f"Labels-cameras.json"))
+        if not exists(join(dest_path, f"Labels-v2.json")) and exists(join(source_path, f"Labels-v2.json")):
+            shutil.copy(join(source_path, f"Labels-v2.json"), join(dest_path, f"Labels-v2.json"))

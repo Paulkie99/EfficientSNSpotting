@@ -266,8 +266,9 @@ class DeepFeatureGenerator:
         self.replays = []
         if self.data_subset != "test":
             self.feature_paths = shuffle(self.feature_paths)
-            for i in range(len(self.feature_paths)):
-                self.replays.append(self.get_replays(i))
+            if data["remove replays"]:
+                for i in range(len(self.feature_paths)):
+                    self.replays.append(self.get_replays(i))
         self.num_classes = 17
         self.label_file = "Labels-v2.json"
         self.dict_event = EVENT_DICTIONARY_V2
@@ -278,7 +279,11 @@ class DeepFeatureGenerator:
         self.overlap = self.window_len - self.stride
 
     def __data_generation(self, index):
-        X = load(join(self.feature_paths[index][0], self.feature_paths[index][1] + "_" + self.feature_type))[:, self.frame_dims[0]:self.frame_dims[1]]
+        if self.feature_type.split('.')[1] == "npy":
+            X = load(join(self.feature_paths[index][0], self.feature_paths[index][1] + "_" + self.feature_type))[:, self.frame_dims[0]:self.frame_dims[1]]
+        elif self.feature_type.split('.')[1] == "h5":
+            with h5py.File(join(self.feature_paths[index][0], self.feature_paths[index][1] + "_" + self.feature_type), 'r') as hf:
+                X = hf['baidu'][:, self.frame_dims[0]:self.frame_dims[1]]
         idx = arange(start=0, stop=X.shape[0] - self.window_len, step=self.stride)
         idxs = []
         for i in arange(0, self.window_len):

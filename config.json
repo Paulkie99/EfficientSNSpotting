@@ -1,5 +1,5 @@
 {
-    "model": "Netvlad++ baidu features",
+    "model": "Netvlad++ tpn features",
     "model params": {},
     "saved model": "",
     "init epoch": 0,
@@ -10,10 +10,10 @@
     "MC start": 0,
     "CV iterations": true,
     "CV start": 0,
-    "learning rate": 1e-4,
+    "learning rate": 10e-4,
     "decay": 0,
-    "batch size": 256,
-    "epochs": 30,
+    "batch size": 128,
+    "epochs": 40,
     "patience": 5,
     "train metrics": ["auc", "precision", "recall", "accuracy"],
     "remove replays": false,
@@ -24,20 +24,20 @@
 
     "features":  "baidu_soccer_embeddings.npy",
     "feature fps": 1.0,
-    "frame dims": [0, 8576],
+    "frame dims": [0, 2048],
     "resize method": "",
     "window length": 7,
     "stride": 7,
     "test stride": 1,
 
 
-    "NMS window": 30,
+    "NMS window": 20,
     "NMS threshold": 0,
 
 
     "jit": true,
     "append training logs": false,
-    "workers": 3,
+    "workers": 5,
 
     "config check exclusions": ["saved model", "init epoch", "test only", "MC start", "CV start", "train metrics",
     "dataset path", "test stride", "jit", "append training logs", "multi proc", "workers", "queue size"]

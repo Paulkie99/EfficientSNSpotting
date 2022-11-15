@@ -1,7 +1,7 @@
 {
     "configs": [
         {
-            "model": "Netvlad++ baidu features 0",
+            "model": "Netvlad++ tpn features 0",
             "model params": {},
             "saved model": "",
             "init epoch": 0,
@@ -10,10 +10,10 @@
             "MC start": 0,
             "CV iterations": true,
             "CV start": 0,
-            "learning rate": 0.0001,
+            "learning rate": 0.001,
             "decay": 0,
-            "batch size": 256,
-            "epochs": 30,
+            "batch size": 128,
+            "epochs": 40,
             "patience": 5,
             "train metrics": [
                 "auc",
@@ -29,17 +29,17 @@
             "feature fps": 1.0,
             "frame dims": [
                 0,
-                8576
+                2048
             ],
             "resize method": "",
             "window length": 7,
             "stride": 7,
             "test stride": 1,
-            "NMS window": 30,
+            "NMS window": 20,
             "NMS threshold": 0,
             "jit": true,
             "append training logs": false,
-            "workers": 3,
+            "workers": 5,
             "config check exclusions": [
                 "saved model",
                 "init epoch",

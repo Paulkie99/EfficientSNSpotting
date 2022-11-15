@@ -84,8 +84,6 @@ def create_model(data):
         model_(rand(data["batch size"], int(data["window length"] * data["feature fps"]),
                     data["frame dims"][1] - data["frame dims"][0]))
 
-    model_.summary()
-
     return model_
 
 

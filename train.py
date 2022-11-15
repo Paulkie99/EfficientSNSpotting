@@ -1,6 +1,8 @@
 import glob
 import multiprocessing
 import shutil
+import time
+
 from tensorboard import program
 from tensorflow.keras.optimizers import Adam
 from keras.callbacks import ModelCheckpoint, EarlyStopping, CSVLogger, History, TensorBoard
@@ -56,6 +58,7 @@ def train(data, iteration, cv_iter, queue) -> History:
     callbacks = [best_checkpointer, csv_logger, early_stopper]
 
     if iteration == "0":
+        model.summary()
         # Tensorboard
         log_dir = join("models", "SoccerNet", data["model"], 'tensorboard', f'{cv_iter}')
         if exists(log_dir):
@@ -151,7 +154,9 @@ def train_for_iterations(data):
     else:
         cv_iterations = 1
 
+    all_cv_start = time.time()
     for cv_iter in tqdm(range(data["CV start"], cv_iterations)):
+        cv_start = time.time()
         save_metrics = {}
         for k in data["train metrics"]:
             save_metrics[k] = []
@@ -164,10 +169,11 @@ def train_for_iterations(data):
         save_metrics["test a-mAP"] = []
 
         for i in range(data["MC start"], data["MC iterations"], data["workers"]):
-            print(f"Starting MC iteration {i + 1}/{data['MC iterations']}, of CV iteration "
-                  f"{cv_iter + 1}/{cv_iterations}")
 
             stop_idx = min(i + data["workers"], data["MC iterations"])
+            start = time.time()
+            print(f"Starting MC iteration {i + 1}--{stop_idx}/{data['MC iterations']}, of CV iteration "
+                  f"{cv_iter + 1}/{cv_iterations}")
 
             # Start training
             processes = [object for worker in range(i, stop_idx)]
@@ -213,6 +219,14 @@ def train_for_iterations(data):
                 else:
                     remove(join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}', f'best_{j}.hdf5'))
 
+            stop = time.time() - start
+            print(f"Ended MC iterations {i + 1}--{stop_idx}, time taken: {(stop // 3600):.2f} hours,"
+                  f"{(stop // 60):.2f} minutes and {stop % 60} seconds.")
+
+        stop = time.time() - cv_start
+        print(f"Ended CV iteration {cv_iter + 1}, time taken: {(stop // 3600):.2f} hours,"
+              f"{(stop // 60):.2f} minutes and {stop % 60} seconds.")
+
         to_save = {}
         for k in save_metrics.keys():
             if "best" not in k:
@@ -226,6 +240,10 @@ def train_for_iterations(data):
                   'w') as f:
             json.dump(to_save, f, indent=4)
 
+    stop = time.time() - all_cv_start
+    print(f"Ended all CV iterations, time taken: {(stop // 3600):.2f} hours,"
+          f"{(stop // 60):.2f} minutes and {stop % 60} seconds.")
+
     cv_avg_metrics = {}
     for cv_iter in range(cv_iterations):
         with open(join('models', "SoccerNet", data["model"], "results", "CV", f'avg_metrics_cv{cv_iter}.json'),
@@ -237,13 +255,14 @@ def train_for_iterations(data):
                 cv_avg_metrics[k].append(metrics[k])
 
     for k in cv_avg_metrics.keys():
-        if "std" in k:
-            if data["MC iterations"] > 1:
-                cv_avg_metrics[k] = sqrt(sum(square(cv_avg_metrics[k])) / cv_iterations)
-            else:
-                cv_avg_metrics[k] = std(cv_avg_metrics[k])
-        elif "best" not in k:
+        # if "std" in k:
+        #     if data["MC iterations"] > 1:
+        #         cv_avg_metrics[k] = sqrt(sum(square(cv_avg_metrics[k])) / cv_iterations)
+        #     else:
+        #         cv_avg_metrics[k] = std(cv_avg_metrics[k])
+        if "best" not in k and "std" not in k:
             cv_avg_metrics[k] = mean(cv_avg_metrics[k])
+            cv_avg_metrics[k + ' std'] = std(cv_avg_metrics[k])
     cv_avg_metrics["best cv iter"] = int(argmin(cv_avg_metrics["best_val_loss"]))
     cv_avg_metrics["best iter"] = cv_avg_metrics["best_val_iter"][cv_avg_metrics["best cv iter"]]
     cv_avg_metrics["best valid loss"] = cv_avg_metrics["best_val_loss"][cv_avg_metrics["best cv iter"]]

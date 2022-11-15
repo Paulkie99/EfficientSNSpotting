@@ -220,12 +220,18 @@ def train_for_iterations(data):
                     remove(join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}', f'best_{j}.hdf5'))
 
             stop = time.time() - start
-            print(f"Ended MC iterations {i + 1}--{stop_idx}, time taken: {(stop // 3600):.2f} hours,"
-                  f"{(stop // 60):.2f} minutes and {stop % 60} seconds.")
+            hours = stop // 3600
+            minutes = (stop - (hours * 3600)) // 60
+            seconds = (stop - (hours * 3600)) % 60
+            print(f"Ended MC iterations {i + 1}--{stop_idx}, time taken: {hours:.2f} hours,"
+                  f"{minutes:.2f} minutes and {seconds:.2f} seconds.")
 
         stop = time.time() - cv_start
-        print(f"Ended CV iteration {cv_iter + 1}, time taken: {(stop // 3600):.2f} hours,"
-              f"{(stop // 60):.2f} minutes and {stop % 60} seconds.")
+        hours = (stop // 3600)
+        minutes = (stop - (hours * 3600)) // 60
+        seconds = (stop - (hours * 3600)) % 60
+        print(f"Ended CV iteration {cv_iter + 1}, time taken: {hours:.2f} hours,"
+              f"{minutes:.2f} minutes and {seconds:.2f} seconds.")
 
         to_save = {}
         for k in save_metrics.keys():
@@ -241,8 +247,11 @@ def train_for_iterations(data):
             json.dump(to_save, f, indent=4)
 
     stop = time.time() - all_cv_start
-    print(f"Ended all CV iterations, time taken: {(stop // 3600):.2f} hours,"
-          f"{(stop // 60):.2f} minutes and {stop % 60} seconds.")
+    hours = (stop // 3600)
+    minutes = (stop - (hours * 3600)) // 60
+    seconds = (stop - (hours * 3600)) % 60
+    print(f"Ended all CV iterations, time taken: {hours:.2f} hours,"
+          f"{minutes:.2f} minutes and {seconds:.2f} seconds.")
 
     cv_avg_metrics = {}
     for cv_iter in range(cv_iterations):

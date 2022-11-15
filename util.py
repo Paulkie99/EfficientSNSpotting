@@ -65,6 +65,7 @@ def setup_environment(data):
     environ['TF_GPU_THREAD_MODE'] = 'gpu_private'
     environ['TF_XLA_FLAGS'] = "--tf_xla_auto_jit=2 --tf_xla_cpu_global_jit"
     environ['TF_GPU_ALLOCATOR'] = 'cuda_malloc_async'
+    environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
     gpus = list_physical_devices('GPU')
     for gpu in gpus:
         set_memory_growth(gpu, True)

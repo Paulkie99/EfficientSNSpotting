@@ -1,0 +1,43 @@
+{
+    "auc": 0.8893567800521851,
+    "auc std": 0.0,
+    "val_auc": 0.865280773639679,
+    "val_auc std": 0.0,
+    "precision": 0.8657260251045228,
+    "precision std": 0.0,
+    "val_precision": 0.867090790271759,
+    "val_precision std": 0.0,
+    "recall": 0.8228713297843934,
+    "recall std": 0.0,
+    "val_recall": 0.8224226570129394,
+    "val_recall std": 0.0,
+    "accuracy": 0.8456706333160401,
+    "accuracy std": 0.0,
+    "val_accuracy": 0.8463640499114989,
+    "val_accuracy std": 0.0,
+    "loss": 0.04813257649540901,
+    "loss std": 0.0,
+    "val_loss": 0.04831123307347297,
+    "val_loss std": 0.0,
+    "epochs": 35.64,
+    "epochs std": 0.0,
+    "best_val_loss": [
+        0.04763048142194748,
+        0.049789123237133026,
+        0.046473171561956406,
+        0.04551493003964424,
+        0.05048211291432381
+    ],
+    "best_val_iter": [
+        4,
+        0,
+        1,
+        0,
+        2
+    ],
+    "test a-mAP": 0.5596704079519372,
+    "test a-mAP std": 0.0,
+    "best cv iter": 3,
+    "best iter": 0,
+    "best valid loss": 0.04551493003964424
+}

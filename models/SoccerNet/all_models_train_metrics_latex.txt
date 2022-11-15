@@ -1,0 +1,18 @@
+\begin{tabular}{ll}
+\hline
+ Model                & Netvlad++ tpn features 0   \\
+\hline
+ Training Auc         & 0.8894 ± 0.0000            \\
+ Validation Auc       & 0.8653 ± 0.0000            \\
+ Training Precision   & 0.8657 ± 0.0000            \\
+ Validation Precision & 0.8671 ± 0.0000            \\
+ Training Recall      & 0.8229 ± 0.0000            \\
+ Validation Recall    & 0.8224 ± 0.0000            \\
+ Training Accuracy    & 0.8457 ± 0.0000            \\
+ Validation Accuracy  & 0.8464 ± 0.0000            \\
+ Training Loss        & 0.0481 ± 0.0000            \\
+ Validation Loss      & 0.0483 ± 0.0000            \\
+ Test a-mAP           & 0.5597 ± 0.0000            \\
+ Epochs               & 35.6400 ± 0.0000           \\
+\hline
+\end{tabular}

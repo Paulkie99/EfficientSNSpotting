@@ -1,0 +1,12 @@
+\begin{tabular}{lrrrrrrrrrrrrrrrrr}
+\hline
+ Model/Metric                                                  &   Class 0 &   Class 1 &   Class 2 &   Class 3 &   Class 4 &   Class 5 &   Class 6 &   Class 7 &   Class 8 &   Class 9 &   Class 10 &   Class 11 &   Class 12 &   Class 13 &   Class 14 &   Class 15 &   Class 16 \\
+\hline
+ Netvlad++ tpn features 0\textbackslash{}outputs\_test/a\_mAP                   &    0.5742 &           &           &           &           &           &           &           &           &           &            &            &            &            &            &            &            \\
+ Netvlad++ tpn features 0\textbackslash{}outputs\_test/a\_mAP\_per\_class         &    0.2301 &    0.7678 &    0.6787 &    0.7892 &    0.4147 &    0.4844 &    0.1839 &    0.7315 &    0.8338 &    0.8826 &     0.7643 &     0.6885 &     0.6636 &     0.9065 &     0.7337 &     0.0075 &     0.0000 \\
+ Netvlad++ tpn features 0\textbackslash{}outputs\_test/a\_mAP\_visible           &    0.6352 &           &           &           &           &           &           &           &           &           &            &            &            &            &            &            &            \\
+ Netvlad++ tpn features 0\textbackslash{}outputs\_test/a\_mAP\_per\_class\_visible &    0.5474 &    0.9179 &    0.7119 &    0.8658 &    0.4294 &    0.4864 &    0.1842 &    0.8570 &    0.8397 &    0.9001 &     0.7718 &     0.7683 &     0.6727 &     0.9346 &     0.7989 &     0.1121 &     0.0000 \\
+ Netvlad++ tpn features 0\textbackslash{}outputs\_test/a\_mAP\_unshown           &    0.4542 &           &           &           &           &           &           &           &           &           &            &            &            &            &            &            &            \\
+ Netvlad++ tpn features 0\textbackslash{}outputs\_test/a\_mAP\_per\_class\_unshown &    0.0000 &    0.7218 &    0.0181 &    0.3170 &    0.0202 &    0.2623 &    0.0303 &    0.5924 &    0.7608 &    0.8181 &     0.3602 &     0.5889 &     0.3943 &     0.8543 &     0.1622 &     0.0038 &     0.0000 \\
+\hline
+\end{tabular}

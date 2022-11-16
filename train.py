@@ -223,14 +223,14 @@ def train_for_iterations(data):
             hours = stop // 3600
             minutes = (stop - (hours * 3600)) // 60
             seconds = (stop - (hours * 3600)) % 60
-            print(f"Ended MC iterations {i + 1}--{stop_idx}, time taken: {hours:.2f} hours,"
+            print(f"Ended MC iterations {i + 1}--{stop_idx}, time taken: {hours:.2f} hours, "
                   f"{minutes:.2f} minutes and {seconds:.2f} seconds.")
 
         stop = time.time() - cv_start
         hours = (stop // 3600)
         minutes = (stop - (hours * 3600)) // 60
         seconds = (stop - (hours * 3600)) % 60
-        print(f"Ended CV iteration {cv_iter + 1}, time taken: {hours:.2f} hours,"
+        print(f"Ended CV iteration {cv_iter + 1}, time taken: {hours:.2f} hours, "
               f"{minutes:.2f} minutes and {seconds:.2f} seconds.")
 
         to_save = {}
@@ -250,7 +250,7 @@ def train_for_iterations(data):
     hours = (stop // 3600)
     minutes = (stop - (hours * 3600)) // 60
     seconds = (stop - (hours * 3600)) % 60
-    print(f"Ended all CV iterations, time taken: {hours:.2f} hours,"
+    print(f"Ended all CV iterations, time taken: {hours:.2f} hours, "
           f"{minutes:.2f} minutes and {seconds:.2f} seconds.")
 
     cv_avg_metrics = {}
@@ -270,8 +270,9 @@ def train_for_iterations(data):
         #     else:
         #         cv_avg_metrics[k] = std(cv_avg_metrics[k])
         if "best" not in k and "std" not in k:
-            cv_avg_metrics[k] = mean(cv_avg_metrics[k])
-            cv_avg_metrics[k + ' std'] = std(cv_avg_metrics[k])
+            temp = cv_avg_metrics[k]
+            cv_avg_metrics[k] = mean(temp)
+            cv_avg_metrics[k + ' std'] = std(temp)
     cv_avg_metrics["best cv iter"] = int(argmin(cv_avg_metrics["best_val_loss"]))
     cv_avg_metrics["best iter"] = cv_avg_metrics["best_val_iter"][cv_avg_metrics["best cv iter"]]
     cv_avg_metrics["best valid loss"] = cv_avg_metrics["best_val_loss"][cv_avg_metrics["best cv iter"]]

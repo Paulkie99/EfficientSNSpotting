@@ -15,6 +15,7 @@ from keras.layers import GlobalAveragePooling2D
 from tqdm import tqdm
 from keras.backend import clear_session
 from tabulate import tabulate
+from SoccerNet.Evaluation.utils import EVENT_DICTIONARY_V2
 from SoccerNet.Downloader import getListGames, SoccerNetDownloader
 from skvideo.measure import scenedet
 from skvideo.io import vread
@@ -228,7 +229,7 @@ def save_train_latex_table(data_):
 
 def save_test_latex_table(data_):
     base_len = len(join("models", "SoccerNet")) + 1
-    headers = ['Model/Metric'] + [f'Class {i}' for i in range(17)]
+    headers = ['Model/Metric'] + [f'{k}' for k in EVENT_DICTIONARY_V2.keys()]
     data = []
     for base, dirs, files in os.walk(join("models", "SoccerNet")):
         for file in files:
@@ -237,7 +238,7 @@ def save_test_latex_table(data_):
                 with open(path, 'r') as f:
                     jdata = json.load(f)
                     for k, v in jdata.items():
-                        add_data = [f'{path[base_len:-len(file) - 1]}/{k}']
+                        add_data = [f'{path[base_len:-len(file) - len("outputs_test") - 2]}/{k}']
                         if isinstance(v, list):
                             add_data.extend(v)
                         else:

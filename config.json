@@ -1,30 +1,30 @@
 {
-    "model": "Netvlad++ tpn features",
+    "model": "Netvlad++ baidu features",
     "model params": {},
     "saved model": "",
     "init epoch": 0,
 
 
     "test only": false,
-    "MC iterations": 5,
+    "MC iterations": 3,
     "MC start": 0,
     "CV iterations": true,
     "CV start": 0,
     "learning rate": 10e-4,
     "decay": 0,
-    "batch size": 128,
+    "batch size": 256,
     "epochs": 40,
-    "patience": 5,
+    "patience": 10,
     "train metrics": ["auc", "precision", "recall", "accuracy"],
     "remove replays": false,
     "balance classes": false,
     "dataset path": "C:\\Users\\pj\\Documents\\Masters\\EfficientSNSpotting\\SoccerNet",
-    "data fraction": 0.5,
+    "data fraction": 1,
 
 
     "features":  "baidu_soccer_embeddings.h5",
     "feature fps": 1.0,
-    "frame dims": [0, 2048],
+    "frame dims": [0, 8576],
     "resize method": "",
     "window length": 7,
     "stride": 7,
@@ -37,8 +37,9 @@
 
     "jit": true,
     "append training logs": false,
-    "workers": 5,
+    "workers": 3,
 
     "config check exclusions": ["saved model", "init epoch", "test only", "MC start", "CV start", "train metrics",
-    "dataset path", "test stride", "jit", "append training logs", "multi proc", "workers", "queue size"]
+    "dataset path", "test stride", "jit", "append training logs", "multi proc", "workers", "queue size",
+        "config check exclusions"]
 }

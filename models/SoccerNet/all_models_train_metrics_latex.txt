@@ -1,18 +1,18 @@
-\begin{tabular}{ll}
+\begin{tabular}{lll}
 \hline
- Model                & Netvlad++ baidu features 1   \\
+ Model                & Netvlad++ baidu features 0   & Netvlad++ tpn features 1   \\
 \hline
- Training Auc         & 0.9521 ± 0.0091              \\
- Validation Auc       & 0.9471 ± 0.0138              \\
- Training Precision   & 0.9130 ± 0.0041              \\
- Validation Precision & 0.9092 ± 0.0118              \\
- Training Recall      & 0.8927 ± 0.0073              \\
- Validation Recall    & 0.8863 ± 0.0089              \\
- Training Accuracy    & 0.9053 ± 0.0059              \\
- Validation Accuracy  & 0.9003 ± 0.0110              \\
- Training Loss        & 0.0283 ± 0.0018              \\
- Validation Loss      & 0.0302 ± 0.0038              \\
- Test a-mAP           & 0.7321 ± 0.0478              \\
- Epochs               & 40.0000 ± 0.0000             \\
+ Training Auc         & 0.9521 ± 0.0091              & 0.8914 ± 0.0035            \\
+ Validation Auc       & 0.9471 ± 0.0138              & 0.8858 ± 0.0074            \\
+ Training Precision   & 0.9130 ± 0.0041              & 0.8652 ± 0.0019            \\
+ Validation Precision & 0.9092 ± 0.0118              & 0.8636 ± 0.0067            \\
+ Training Recall      & 0.8927 ± 0.0073              & 0.8223 ± 0.0029            \\
+ Validation Recall    & 0.8863 ± 0.0089              & 0.8204 ± 0.0044            \\
+ Training Accuracy    & 0.9053 ± 0.0059              & 0.8452 ± 0.0025            \\
+ Validation Accuracy  & 0.9003 ± 0.0110              & 0.8432 ± 0.0058            \\
+ Training Loss        & 0.0283 ± 0.0018              & 0.0483 ± 0.0008            \\
+ Validation Loss      & 0.0302 ± 0.0038              & 0.0492 ± 0.0018            \\
+ Test a-mAP           & 0.7321 ± 0.0478              & 0.5568 ± 0.0173            \\
+ Epochs               & 40.0000 ± 0.0000             & 40.0000 ± 0.0000           \\
 \hline
 \end{tabular}

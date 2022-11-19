@@ -1,5 +1,5 @@
 {
-    "model": "Netvlad++ vtn features",
+    "model": "Netvlad++ irCSN features",
     "model params": {},
     "saved model": "",
     "init epoch": 0,
@@ -24,7 +24,7 @@
 
     "features":  "baidu_soccer_embeddings.h5",
     "feature fps": 1.0,
-    "frame dims": [4096, 4480],
+    "frame dims": [4480, 6528],
     "resize method": "",
     "window length": 7,
     "stride": 7,

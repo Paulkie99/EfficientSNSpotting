@@ -1,5 +1,5 @@
 {
-    "model": "Netvlad++ i3d-slow features",
+    "model": "Netvlad++ sans GTA",
     "model params": {},
     "saved model": "",
     "init epoch": 0,
@@ -9,7 +9,7 @@
     "MC iterations": 3,
     "MC start": 0,
     "CV iterations": true,
-    "CV start": 1,
+    "CV start": 0,
     "learning rate": 10e-4,
     "decay": 0,
     "batch size": 256,
@@ -24,7 +24,7 @@
 
     "features":  "baidu_soccer_embeddings.h5",
     "feature fps": 1.0,
-    "frame dims": [6528, 8576],
+    "frame dims": [-4480, 2048],
     "resize method": "",
     "window length": 7,
     "stride": 7,

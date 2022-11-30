@@ -214,7 +214,7 @@ def save_train_latex_table(data_):
                 path = join(base, file)
                 with open(path, 'r') as f:
                     jdata = json.load(f)
-                    headers.append(f'{path[base_len:-len(file) - len("results") - len("CV") - 3]}')
+                    headers.append(f'{path[base_len:-len(file) - len("results") - len("CV") - 5]}')
                     for i in range(len(metrics)):
                         data[2 * i].append(f"{jdata[metrics[i]]:.4f} \u00B1 {jdata[metrics[i] + ' std']:.4f}")
                         data[2 * i + 1].append(
@@ -238,7 +238,7 @@ def save_test_latex_table(data_):
                 with open(path, 'r') as f:
                     jdata = json.load(f)
                     for k, v in jdata.items():
-                        add_data = [f'{path[base_len:-len(file) - len("outputs_test") - 2]}/{k}']
+                        add_data = [f'{path[base_len:-len(file) - len("outputs_test") - 4]}/{k}']
                         if isinstance(v, list):
                             add_data.extend(v)
                         else:

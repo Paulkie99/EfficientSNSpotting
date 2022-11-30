@@ -3,7 +3,7 @@ import h5py
 from keras.utils import to_categorical
 from tensorflow.keras.utils import Sequence
 from numpy import ceil, single, zeros, reshape, divide, load, uint8, delete, where, arange, \
-    stack
+    stack, take
 from numpy.random import randint, choice
 from os.path import join
 from SoccerNet.DataLoader import getDuration
@@ -283,7 +283,7 @@ class DeepFeatureGenerator:
             X = load(join(self.feature_paths[index][0], self.feature_paths[index][1] + "_" + self.feature_type))[:, self.frame_dims[0]:self.frame_dims[1]]
         elif self.feature_type.split('.')[1] == "h5":
             with h5py.File(join(self.feature_paths[index][0], self.feature_paths[index][1] + "_" + self.feature_type), 'r') as hf:
-                X = hf['baidu'][:, self.frame_dims[0]:self.frame_dims[1]]
+                X = take(hf['baidu'], range(self.frame_dims[0], self.frame_dims[1]), mode='wrap', axis=1)
         idx = arange(start=0, stop=X.shape[0] - self.window_len, step=self.stride)
         idxs = []
         for i in arange(0, self.window_len):
@@ -293,7 +293,8 @@ class DeepFeatureGenerator:
         X = X[idx, ...]
 
         assert X.shape[1] == self.window_len
-        assert X.shape[2] == self.frame_dims[1] - self.frame_dims[0]
+        # print(X.shape[2], abs(self.frame_dims[1] - self.frame_dims[0]))
+        assert X.shape[2] == abs(self.frame_dims[1] - self.frame_dims[0])
 
         if self.data_subset != "test":
             Y = zeros((X.shape[0], 1))

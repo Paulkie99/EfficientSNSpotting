@@ -65,75 +65,66 @@ def train(data, iteration, cv_iter, queue) -> History:
             shutil.rmtree(log_dir)
         makedirs(log_dir)
         tboard_callback = TensorBoard(log_dir=log_dir,
-                                      profile_batch='2000,2100')
+                                      profile_batch='100,300')
         tb_prog = program.TensorBoard()
         tb_prog.configure(argv=[None, '--logdir',
                                 join(getcwd(), "models", "SoccerNet", data["model"], 'tensorboard', f'{cv_iter}')])
         tb_prog.launch()
         callbacks.append(tboard_callback)
 
-    if 'video' in data["features"].lower():  # All images cannot fit into memory, a generator must be used for training.
-        params = {
-            'train': 'train',
-            'data_path': data["dataset path"],
-            'fps': data["feature fps"],
-            'window_len': data["window length"],
-            'cv_iter': cv_iter,
-            'frame_dims': data["frame dims"],
-            'resize_method': data["resize method"],
-            'batch_size': data["batch size"],
-            'data_fraction': data["data fraction"]
-        }
+    [remove(path) for path in glob.glob("*train_cache*")]
+    [remove(path) for path in glob.glob("*valid_cache*")]
 
-        train_generator = SoccerNetTrainVideoDataGenerator(**params)
-        # gen = SoccerNetTrainDataset(**params)
-        # train_generator = tf.data.Dataset.from_generator(gen, output_signature=(
-        #     tf.TensorSpec(shape=(int(ceil(window_len * feature_fps)), 224, 398, 3), dtype=tf.uint8),
-        #     tf.TensorSpec(shape=(18,), dtype=tf.uint8)
-        # ))
-        # train_generator = train_generator.map((lambda x, y: (tf.divide(x, 255), y)),
-        #                                       num_parallel_calls=tf.data.AUTOTUNE)
-        # train_generator = train_generator.batch(batch_size, num_parallel_calls=tf.data.AUTOTUNE,
-        #                                         deterministic=False).prefetch(tf.data.AUTOTUNE)
+    train_generator = DeepFeatureGenerator(data, cv_iter=cv_iter, data_subset="train")
+    validation_generator = DeepFeatureGenerator(data, cv_iter=cv_iter, data_subset="valid")
+    if 'frames' in data[
+        "features"].lower():  # All images cannot fit into memory, a generator must be used for training.
+        train_generator = tf.data.Dataset.from_generator(train_generator, output_signature=(
+            tf.TensorSpec(shape=(data["window length"],
+                                 data["frame dims"][1], data["frame dims"][0], 3), dtype=tf.uint8),
+            tf.TensorSpec(shape=(18,), dtype=tf.uint8)
+        ))
 
-        params['train'] = 'valid'
-        validation_generator = SoccerNetTrainVideoDataGenerator(**params)
-        # gen = SoccerNetTrainDataset(**params)
-        # validation_generator = tf.data.Dataset.from_generator(gen, output_signature=(
-        #     tf.TensorSpec(shape=(int(ceil(window_len * feature_fps)), 224, 398, 3), dtype=tf.uint8),
-        #     tf.TensorSpec(shape=(18,), dtype=tf.uint8)
-        # ))
-        # validation_generator = validation_generator.map((lambda x, y: (tf.divide(x, 255), y)),
-        #                                                 num_parallel_calls=tf.data.AUTOTUNE)
-        # validation_generator = validation_generator.batch(batch_size, num_parallel_calls=tf.data.AUTOTUNE,
-        #                                                   deterministic=False).prefetch(tf.data.AUTOTUNE)
+        train_generator = train_generator.map(lambda x, y: (tf.divide(x, 255), y), num_parallel_calls=tf.data.AUTOTUNE)
+        if data["resize method"] != "":
+            # TODO check desired resize method and apply
+            pass
+
+        validation_generator = tf.data.Dataset.from_generator(validation_generator, output_signature=(
+            tf.TensorSpec(shape=(data["window length"],
+                                 data["frame dims"][1], data["frame dims"][0], 3), dtype=tf.uint8),
+            tf.TensorSpec(shape=(18,), dtype=tf.uint8)
+        ))
+
+        validation_generator = validation_generator.map(lambda x, y: (tf.divide(x, 255), y),
+                                                        num_parallel_calls=tf.data.AUTOTUNE)
+        if data["resize method"] != "":
+            # TODO check desired resize method and apply
+            pass
 
     elif "baidu" in data["features"].lower():
-        [remove(path) for path in glob.glob("*train_cache*")]
-        [remove(path) for path in glob.glob("*valid_cache*")]
-
-        train_generator = DeepFeatureGenerator(data, cv_iter=cv_iter, data_subset="train")
         train_generator = tf.data.Dataset.from_generator(train_generator, output_signature=(
             tf.TensorSpec(shape=(data["window length"],
                                  data["frame dims"][1] - data["frame dims"][0]), dtype=tf.float32),
             tf.TensorSpec(shape=(18,), dtype=tf.uint8)
         ))
-        train_generator = train_generator.take(-1).shuffle(2000).batch(data["batch size"],
-                                                                       num_parallel_calls=tf.data.AUTOTUNE,
-                                                                       deterministic=False).prefetch(tf.data.AUTOTUNE)
 
-        validation_generator = DeepFeatureGenerator(data, cv_iter=cv_iter, data_subset="valid")
         validation_generator = tf.data.Dataset.from_generator(validation_generator, output_signature=(
             tf.TensorSpec(shape=(data["window length"],
                                  data["frame dims"][1] - data["frame dims"][0]), dtype=tf.float32),
             tf.TensorSpec(shape=(18,), dtype=tf.uint8)
         ))
 
-        validation_generator = validation_generator.batch(data["batch size"],
-                                                          num_parallel_calls=tf.data.AUTOTUNE,
-                                                          deterministic=False).prefetch(tf.data.AUTOTUNE)
+    train_generator = train_generator.take(-1).shuffle(2 * data["batch size"]).batch(data["batch size"],
+                                                                                     num_parallel_calls=tf.data.AUTOTUNE,
+                                                                                     deterministic=False).prefetch(
+        tf.data.AUTOTUNE)
+    validation_generator = validation_generator.batch(data["batch size"],
+                                                      num_parallel_calls=tf.data.AUTOTUNE,
+                                                      deterministic=False).prefetch(tf.data.AUTOTUNE)
 
-    history = model.fit(x=train_generator, verbose=(1 if iteration == "0" else 0), callbacks=callbacks, epochs=data["epochs"],
+    history = model.fit(x=train_generator, verbose=(1 if iteration == "0" else 0), callbacks=callbacks,
+                        epochs=data["epochs"],
                         validation_data=validation_generator,
                         initial_epoch=data["init epoch"], validation_freq=1)
 
@@ -212,10 +203,13 @@ def train_for_iterations(data):
                 if min(history['val_loss']) < save_metrics["best_val_loss"]:
                     save_metrics["best_val_loss"] = min(history['val_loss'])
                     save_metrics["best_val_iter"] = j
-                    if exists(join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}', f'overall_best.hdf5')):
-                        remove(join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}', f'overall_best.hdf5'))
+                    if exists(join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}',
+                                   f'overall_best.hdf5')):
+                        remove(join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}',
+                                    f'overall_best.hdf5'))
                     rename(join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}', f'best_{j}.hdf5'),
-                           join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}', f'overall_best.hdf5'))
+                           join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}',
+                                f'overall_best.hdf5'))
                 else:
                     remove(join('models', "SoccerNet", data["model"], "checkpoints", f'{cv_iter}', f'best_{j}.hdf5'))
 

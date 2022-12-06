@@ -58,30 +58,36 @@ def test_soccernet(data, model_name: str = 'overall_best.hdf5', cv_iter: int = 0
     model = create_model(data)
     model.load_weights(os.path.join(path, "checkpoints", f'{cv_iter}', model_name))
 
-    games = get_cv_data("test", cv_iter, data["data fraction"])
-    if "video" in data["features"].lower():
-        # TODO change test generator
-        pass
-        # train_generator = SoccerNetTestVideoGenerator(game[1], half + 1, data["batch size"], data["dataset path"],
-        #                                               data["feature fps"], data["window length"],
-        #                                               data["test stride"], data["frame dims"],
-        #                                               data["resize method"])
-
-    elif "baidu" in data["features"].lower():
-        generator = DeepFeatureGenerator(data, cv_iter=cv_iter, data_subset="test")
-        train_generator = tf.data.Dataset.from_generator(generator, output_signature=(
-            tf.TensorSpec(shape=(None, data["window length"], data["frame dims"][1] - data["frame dims"][0]),
-                          dtype=tf.float32)
-        ))
-        train_generator = train_generator.prefetch(tf.data.AUTOTUNE)
-
-        for vid in enumerate(games):
-            assert os.path.join(data["dataset path"], vid[1]) == generator.feature_paths[2 * vid[0]][0]
-
     all_pred_y = []
     print("Testing")
-    for x in train_generator:
-        all_pred_y.append(model.predict(x=x, batch_size=data["batch size"], verbose=0)[:, 1:])
+
+    games = get_cv_data("test", cv_iter, data["data fraction"])
+
+    for vid_idx in range(len(games)):
+        for half in range(2):
+            generator = DeepFeatureGenerator(data, cv_iter=cv_iter, data_subset="test", vid_index=vid_idx,
+                                             sethalf=half + 1)
+            if "frames" in data["features"].lower():
+                train_generator = tf.data.Dataset.from_generator(generator, output_signature=(
+                    tf.TensorSpec(shape=(data["window length"], data["frame dims"][1], data["frame dims"][0], 3),
+                                  dtype=tf.uint8)
+                ))
+                train_generator = train_generator.map(lambda x: tf.divide(x, 255), num_parallel_calls=tf.data.AUTOTUNE)
+                if data["resize method"] != "":
+                    # TODO check desired resize method and apply
+                    pass
+
+            elif "baidu" in data["features"].lower():
+                train_generator = tf.data.Dataset.from_generator(generator, output_signature=(
+                    tf.TensorSpec(shape=(None, data["window length"], data["frame dims"][1] - data["frame dims"][0]),
+                                  dtype=tf.float32)
+                ))
+
+            train_generator = train_generator.batch(data["batch size"],
+                                                    num_parallel_calls=tf.data.AUTOTUNE,
+                                                    deterministic=False).prefetch(tf.data.AUTOTUNE)
+
+            all_pred_y.append(model.predict(x=train_generator, verbose=0)[:, 1:])
 
     assert len(all_pred_y) == int(100 * data["data fraction"]) * 2
 

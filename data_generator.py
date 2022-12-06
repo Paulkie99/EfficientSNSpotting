@@ -3,7 +3,7 @@ import h5py
 from keras.utils import to_categorical
 from tensorflow.keras.utils import Sequence
 from numpy import ceil, single, zeros, reshape, divide, load, uint8, delete, where, arange, \
-    stack, take
+    stack, take, array
 from numpy.random import randint, choice
 from os.path import join
 from SoccerNet.DataLoader import getDuration
@@ -11,6 +11,7 @@ from SoccerNet.Evaluation.utils import EVENT_DICTIONARY_V2
 import json
 from sklearn.utils import shuffle
 from util import resize, get_cv_data
+import psutil
 
 
 class SoccerNetTrainDataset:
@@ -249,26 +250,28 @@ class SoccerNetTrainVideoDataGenerator(Sequence, SoccerNetTrainDataset):
 
 
 class DeepFeatureGenerator:
-    def __init__(self, data, cv_iter=0, data_subset="train"):
+    def __init__(self, data, cv_iter=0, data_subset="train", vid_index=-1, sethalf=-1):
         self.window_len = data["window length"]
+        self.feature_paths = []
+        self.replays = []
+        self.base_path = data["dataset path"]
+
         if data_subset != "test":
             self.stride = data["stride"]
-        else:
-            self.stride = data["test stride"]
-        self.base_path = data["dataset path"]
-        self.feature_type = data["features"]
-
-        self.data_subset = data_subset
-        self.feature_paths = []
-        for vid in get_cv_data(data_subset, cv_iter, data["data fraction"]):
-            for half in range(1, 3):
-                self.feature_paths.append((join(self.base_path, vid), f"{half}"))
-        self.replays = []
-        if self.data_subset != "test":
+            for vid in get_cv_data(data_subset, cv_iter, data["data fraction"]):
+                for half in range(1, 3):
+                    self.feature_paths.append((join(self.base_path, vid), f"{half}"))
             self.feature_paths = shuffle(self.feature_paths)
             if data["remove replays"]:
                 for i in range(len(self.feature_paths)):
                     self.replays.append(self.get_replays(i))
+        else:
+            self.stride = data["test stride"]
+            self.feature_paths = [(join(self.base_path, get_cv_data(data_subset, cv_iter, data["data fraction"])[vid_index]), f"{sethalf}")]
+            print(self.feature_paths)
+
+        self.feature_type = data["features"]
+        self.data_subset = data_subset
         self.num_classes = 17
         self.label_file = "Labels-v2.json"
         self.dict_event = EVENT_DICTIONARY_V2
@@ -279,66 +282,61 @@ class DeepFeatureGenerator:
         self.overlap = self.window_len - self.stride
 
     def __data_generation(self, index):
-        if self.feature_type.split('.')[1] == "npy":
-            X = load(join(self.feature_paths[index][0], self.feature_paths[index][1] + "_" + self.feature_type))[:, self.frame_dims[0]:self.frame_dims[1]]
-        elif self.feature_type.split('.')[1] == "h5":
-            with h5py.File(join(self.feature_paths[index][0], self.feature_paths[index][1] + "_" + self.feature_type), 'r') as hf:
-                X = take(hf['baidu'], range(self.frame_dims[0], self.frame_dims[1]), mode='wrap', axis=1)
-        idx = arange(start=0, stop=X.shape[0] - self.window_len, step=self.stride)
-        idxs = []
-        for i in arange(0, self.window_len):
-            idxs.append(idx + i)
-        idx = stack(idxs, axis=1)
+        with h5py.File(join(self.feature_paths[index][0], self.feature_paths[index][1] + "_" + self.feature_type),
+                       'r') as hf:
+            if 'baidu' in self.feature_type:
+                X = take(hf[self.feature_type.split('.')[0].split('_')[0]],
+                         range(self.frame_dims[0], self.frame_dims[1]), mode='wrap', axis=1)
+            else:
+                X = hf[self.feature_type.split('.')[0].split('_')[0]]
+            idx = arange(start=0, stop=X.shape[0] - self.window_len, step=self.stride)
 
-        X = X[idx, ...]
+            if self.data_subset != "test":
+                Y = zeros((idx.shape[0], 1))
+                labels = json.load(open(join(self.feature_paths[index][0], "Labels-v2.json")))
+                for annotation in labels["annotations"]:
+                    # if annotation["visibility"] == "not shown":
+                    #     continue
+                    time = annotation["gameTime"]
+                    read_half = time[0]
+                    if read_half != self.feature_paths[index][1]:
+                        continue
+                    event = annotation["label"]
+                    if event not in self.dict_event:
+                        continue
+                    minutes = int(time[-5:-3])
+                    seconds = int(time[-2::])
+                    t_seconds = seconds + 60 * minutes  # time of event in seconds
+                    frame = int(self.fps * t_seconds) // self.stride
 
-        assert X.shape[1] == self.window_len
-        # print(X.shape[2], abs(self.frame_dims[1] - self.frame_dims[0]))
-        assert X.shape[2] == abs(self.frame_dims[1] - self.frame_dims[0])
+                    if frame >= idx.shape[0]:
+                        continue
 
-        if self.data_subset != "test":
-            Y = zeros((X.shape[0], 1))
-            labels = json.load(open(join(self.feature_paths[index][0], "Labels-v2.json")))
-            for annotation in labels["annotations"]:
-                # if annotation["visibility"] == "not shown":
-                #     continue
-                time = annotation["gameTime"]
-                read_half = time[0]
-                if read_half != self.feature_paths[index][1]:
-                    continue
-                event = annotation["label"]
-                if event not in self.dict_event:
-                    continue
-                minutes = int(time[-5:-3])
-                seconds = int(time[-2::])
-                t_seconds = seconds + 60 * minutes  # time of event in seconds
-                frame = int(self.fps * t_seconds) // self.stride
+                    label = self.dict_event[event]  # event label
+                    start = max(frame - self.overlap, 0)
+                    Y[start: frame + 1, 0] = label + 1
 
-                if frame >= X.shape[0]:
-                    continue
+                if self.remove_replays:
+                    for replay in self.replays[index]:
+                        start, end, half = replay[0], replay[1], replay[2]
+                        start, end = int(start * self.fps) // self.stride, int(end * self.fps) // self.stride
+                        idx = delete(idx, list(range(start, end + 1)), axis=0)
+                        Y = delete(Y, list(range(start, end + 1)), axis=0)
 
-                label = self.dict_event[event]  # event label
-                start = max(frame - self.overlap, 0)
-                Y[start: frame + 1, 0] = label + 1
+                if self.balance_classes:
+                    delete_candidates = where(Y[:, 0] == 0)[0]
+                    desired_num_bg = int((idx.shape[0] - len(delete_candidates)) / 17)
+                    delete_candidates = choice(delete_candidates, size=len(delete_candidates) - desired_num_bg,
+                                               replace=False)
+                    idx = delete(idx, delete_candidates, axis=0)
+                    Y = delete(Y, delete_candidates, axis=0)
 
-            if self.remove_replays:
-                for replay in self.replays[index]:
-                    start, end, half = replay[0], replay[1], replay[2]
-                    start, end = int(start * self.fps) // self.stride, int(end * self.fps) // self.stride
-                    X = delete(X, list(range(start, end + 1)), axis=0)
-                    Y = delete(Y, list(range(start, end + 1)), axis=0)
-
-            if self.balance_classes:
-                delete_candidates = where(Y[:, 0] == 0)[0]
-                desired_num_bg = int((X.shape[0] - len(delete_candidates)) / 17)
-                delete_candidates = choice(delete_candidates, size=len(delete_candidates) - desired_num_bg,
-                                           replace=False)
-                X = delete(X, delete_candidates, axis=0)
-                Y = delete(Y, delete_candidates, axis=0)
-
-            return X, to_categorical(Y, num_classes=18)
-
-        return X
+                Y = to_categorical(Y, num_classes=18)
+                for i in enumerate(idx):
+                    yield X[i[1]: i[1] + self.window_len, ...], Y[i[0], ...]
+            else:
+                for i in enumerate(idx):
+                    yield X[i[1]: i[1] + self.window_len, ...]
 
     def get_replays(self, index):
         camera_labels = json.load(open(join(self.feature_paths[index][0], "Labels-cameras.json")))
@@ -361,15 +359,8 @@ class DeepFeatureGenerator:
         return replays
 
     def __call__(self, *args, **kwargs):
-        if self.data_subset != "test":
-            for i in range(len(self.feature_paths)):
-                X, Y = self.__data_generation(i)
-                for sample in range(X.shape[0]):
-                    yield X[sample, ...], \
-                          Y[sample, ...]
-        else:
-            for i in range(len(self.feature_paths)):
-                yield self.__data_generation(i)
+        for i in range(len(self.feature_paths)):
+            yield from self.__data_generation(i)
 
 
 class SoccerNetTestVideoGenerator(Sequence):

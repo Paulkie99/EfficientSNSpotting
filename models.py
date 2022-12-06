@@ -70,8 +70,8 @@ def createANN(dataset: str = "CSports", seq_length: int = 7, num_layers: int = 2
 
 def create_model(data):
     if "resnet" in data["model"].lower():
-        model_ = Resnet3DBuilder.build_resnet_18((int(ceil(data["window length"] * data["feature fps"])),
-                                                  data["frame dims"][0], data["frame dims"][1], 3), 18,
+        model_ = Resnet3DBuilder.build_resnet_18((data["window length"],
+                                                  data["frame dims"][1], data["frame dims"][0], 3), 18,
                                                  multilabel=True)
     elif "transformer" in data["model"].lower():
         model_ = createTransformerModel("baidu", seq_length=data["window length"],

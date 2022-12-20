@@ -1,5 +1,5 @@
 {
-    "model": "3D ResNet-18",
+    "model": "NetVLAD++ baidu no replays",
     "model params": {},
     "saved model": "",
     "init epoch": 0,
@@ -16,18 +16,18 @@
     "epochs": 40,
     "patience": 10,
     "train metrics": ["auc", "precision", "recall", "accuracy"],
-    "remove replays": false,
+    "remove replays": true,
     "balance classes": false,
-    "dataset path": "H:\\SoccerNet",
+    "dataset path": "C:\\Users\\pj\\Documents\\Masters\\EfficientSNSpotting\\SoccerNet",
     "data fraction": 1,
 
 
-    "features":  "frames.h5",
-    "feature fps": 3.125,
-    "frame dims": [398, 224],
+    "features":  "baidu_soccer_embeddings.h5",
+    "feature fps": 1,
+    "frame dims": [0, 8576],
     "resize method": "",
-    "window length": 22,
-    "stride": 22,
+    "window length": 7,
+    "stride": 7,
     "test stride": 1,
 
 
@@ -37,7 +37,7 @@
 
     "jit": true,
     "append training logs": false,
-    "workers": 2,
+    "workers": 1,
 
     "config check exclusions": ["saved model", "init epoch", "test only", "MC start", "CV start", "train metrics",
     "dataset path", "test stride", "jit", "append training logs", "multi proc", "workers", "queue size",

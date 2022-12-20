@@ -3,11 +3,12 @@ import os.path
 import shutil
 import zipfile
 
+import h5py
 from SoccerNet.Evaluation.utils import INVERSE_EVENT_DICTIONARY_V2
 from util import release_gpu_memory, get_cv_data
 from models import create_model
 from data_generator import SoccerNetTestVideoGenerator, DeepFeatureGenerator
-from numpy import argmax, minimum, maximum, transpose, copy
+from numpy import argmax, minimum, maximum, transpose, copy, take
 from SoccerNet.Evaluation.ActionSpotting import evaluate
 from numpy import max as np_max
 import tensorflow as tf
@@ -67,21 +68,37 @@ def test_soccernet(data, model_name: str = 'overall_best.hdf5', cv_iter: int = 0
         for half in range(2):
             generator = DeepFeatureGenerator(data, cv_iter=cv_iter, data_subset="test", vid_index=vid_idx,
                                              sethalf=half + 1)
-            if "frames" in data["features"].lower():
-                train_generator = tf.data.Dataset.from_generator(generator, output_signature=(
-                    tf.TensorSpec(shape=(data["window length"], data["frame dims"][1], data["frame dims"][0], 3),
-                                  dtype=tf.uint8)
-                ))
-                train_generator = train_generator.map(lambda x: tf.divide(x, 255), num_parallel_calls=tf.data.AUTOTUNE)
-                if data["resize method"] != "":
-                    # TODO check desired resize method and apply
-                    pass
 
-            elif "baidu" in data["features"].lower():
-                train_generator = tf.data.Dataset.from_generator(generator, output_signature=(
-                    tf.TensorSpec(shape=(None, data["window length"], data["frame dims"][1] - data["frame dims"][0]),
-                                  dtype=tf.float32)
-                ))
+            x, y = zip(*[(x, y) for (x, y) in generator()])
+
+            train_generator = tf.data.Dataset.from_tensor_slices((list(x), list(y)))
+
+            def read_frames(path, index):
+                with h5py.File(bytes.decode(path.numpy()), 'r') as hf:
+                    X = hf[data["features"].split('.')[0].split('_')[0]]
+                    if 'baidu' in data["features"]:
+                        frames = take(X[int(index): int(index) + data["window length"], ...],
+                                      range(data["frame dims"][0], data["frame dims"][1]), mode='wrap', axis=1)
+                        frames = tf.divide(frames, 255)
+                    else:
+                        frames = tf.divide(X[int(index): int(index) + data["window length"], ...], 255)
+
+                    if data["resize method"] != "":
+                        # TODO check desired resize method and apply
+                        pass
+                    return frames
+
+            def _fixup_shape(images):
+                if 'baidu' in data["features"]:
+                    images.set_shape([data["window length"], data["frame dims"][1] - data["frame dims"][0]])
+                else:
+                    images.set_shape([data["window length"], data["frame dims"][1], data["frame dims"][0], 3])
+                return images
+
+            train_generator = train_generator.map(lambda path, index: tf.py_function(read_frames,
+                                                                                     [path, index],
+                                                                                     [tf.float32]),
+                                                  num_parallel_calls=tf.data.AUTOTUNE).map(_fixup_shape)
 
             train_generator = train_generator.batch(data["batch size"],
                                                     num_parallel_calls=tf.data.AUTOTUNE,

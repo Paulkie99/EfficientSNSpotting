@@ -3,6 +3,7 @@ import multiprocessing
 import shutil
 import time
 
+import h5py
 from tensorboard import program
 from tensorflow.keras.optimizers import Adam
 from keras.callbacks import ModelCheckpoint, EarlyStopping, CSVLogger, History, TensorBoard
@@ -15,7 +16,7 @@ from data_generator import SoccerNetTrainVideoDataGenerator, DeepFeatureGenerato
 from util import release_gpu_memory, save_train_latex_table, save_test_latex_table, setup_environment, \
     map_train_metrics_to_funcs, get_config
 from models import create_model
-from numpy import inf, argmin, mean, std, sqrt, square
+from numpy import inf, argmin, mean, std, sqrt, square, take, array
 from test import test_soccernet
 from plotter import plot_train_history
 import json
@@ -77,47 +78,53 @@ def train(data, iteration, cv_iter, queue) -> History:
 
     train_generator = DeepFeatureGenerator(data, cv_iter=cv_iter, data_subset="train")
     validation_generator = DeepFeatureGenerator(data, cv_iter=cv_iter, data_subset="valid")
-    if 'frames' in data[
-        "features"].lower():  # All images cannot fit into memory, a generator must be used for training.
-        train_generator = tf.data.Dataset.from_generator(train_generator, output_signature=(
-            tf.TensorSpec(shape=(data["window length"],
-                                 data["frame dims"][1], data["frame dims"][0], 3), dtype=tf.uint8),
-            tf.TensorSpec(shape=(18,), dtype=tf.uint8)
-        ))
 
-        train_generator = train_generator.map(lambda x, y: (tf.divide(x, 255), y), num_parallel_calls=tf.data.AUTOTUNE)
-        if data["resize method"] != "":
-            # TODO check desired resize method and apply
-            pass
+    # All images cannot fit into memory, a generator must be used for training.
+    train_x, y, z = zip(*[(x, y, z) for (x, y, z) in train_generator()])
+    train_generator = tf.data.Dataset.from_tensor_slices((list(train_x), list(y), list(z)))
 
-        validation_generator = tf.data.Dataset.from_generator(validation_generator, output_signature=(
-            tf.TensorSpec(shape=(data["window length"],
-                                 data["frame dims"][1], data["frame dims"][0], 3), dtype=tf.uint8),
-            tf.TensorSpec(shape=(18,), dtype=tf.uint8)
-        ))
+    def read_frames(path, index, label):
+        with h5py.File(bytes.decode(path.numpy()), 'r') as hf:
+            X = hf[data["features"].split('.')[0].split('_')[0]]
+            if 'baidu' in data["features"]:
+                frames = take(X[int(index): int(index) + data["window length"], ...],
+                              range(data["frame dims"][0], data["frame dims"][1]), mode='wrap', axis=1)
+                frames = tf.divide(frames, 255)
+            else:
+                frames = tf.divide(X[int(index): int(index) + data["window length"], ...], 255)
 
-        validation_generator = validation_generator.map(lambda x, y: (tf.divide(x, 255), y),
-                                                        num_parallel_calls=tf.data.AUTOTUNE)
-        if data["resize method"] != "":
-            # TODO check desired resize method and apply
-            pass
+            if data["resize method"] != "":
+                # TODO check desired resize method and apply
+                pass
+            return frames, label
 
-    elif "baidu" in data["features"].lower():
-        train_generator = tf.data.Dataset.from_generator(train_generator, output_signature=(
-            tf.TensorSpec(shape=(data["window length"],
-                                 data["frame dims"][1] - data["frame dims"][0]), dtype=tf.float32),
-            tf.TensorSpec(shape=(18,), dtype=tf.uint8)
-        ))
+    def _fixup_shape(images, labels):
+        if 'baidu' in data["features"]:
+            images.set_shape([data["window length"], data["frame dims"][1] - data["frame dims"][0]])
+        else:
+            images.set_shape([data["window length"], data["frame dims"][1], data["frame dims"][0], 3])
+        labels.set_shape([18])
+        # weights.set_shape([None])
+        return images, labels
 
-        validation_generator = tf.data.Dataset.from_generator(validation_generator, output_signature=(
-            tf.TensorSpec(shape=(data["window length"],
-                                 data["frame dims"][1] - data["frame dims"][0]), dtype=tf.float32),
-            tf.TensorSpec(shape=(18,), dtype=tf.uint8)
-        ))
+    train_generator = train_generator.map(lambda path, index, label: tf.py_function(read_frames,
+                                                                                    [path, index, label],
+                                                                                    [tf.float32,
+                                                                                     tf.uint8]),
+                                          num_parallel_calls=tf.data.AUTOTUNE).map(_fixup_shape)
 
-    train_generator = train_generator.take(-1).shuffle(2 * data["batch size"]).batch(data["batch size"],
-                                                                                     num_parallel_calls=tf.data.AUTOTUNE,
-                                                                                     deterministic=False).prefetch(
+    x, y, z = zip(*[(x, y, z) for (x, y, z) in validation_generator()])
+    validation_generator = tf.data.Dataset.from_tensor_slices((list(x), list(y), list(z)))
+
+    validation_generator = validation_generator.map(lambda path, index, label: tf.py_function(read_frames,
+                                                                                              [path, index, label],
+                                                                                              [tf.float32,
+                                                                                               tf.uint8]),
+                                                    num_parallel_calls=tf.data.AUTOTUNE).map(_fixup_shape)
+
+    train_generator = train_generator.take(-1).shuffle(data["batch size"]).batch(data["batch size"],
+                                                                                 num_parallel_calls=tf.data.AUTOTUNE,
+                                                                                 deterministic=False).prefetch(
         tf.data.AUTOTUNE)
     validation_generator = validation_generator.batch(data["batch size"],
                                                       num_parallel_calls=tf.data.AUTOTUNE,
@@ -280,6 +287,8 @@ def train_for_iterations(data):
 
 
 if __name__ == '__main__':
+    print(f'Running eagerly: {tf.executing_eagerly()}')
+
     with open("config.json", "r") as jsonfile:
         data = json.load(jsonfile)
 

@@ -268,7 +268,7 @@ class DeepFeatureGenerator:
         else:
             self.stride = data["test stride"]
             self.feature_paths = [(join(self.base_path, get_cv_data(data_subset, cv_iter, data["data fraction"])[vid_index]), f"{sethalf}")]
-            print(self.feature_paths)
+            # print(self.feature_paths)
 
         self.feature_type = data["features"]
         self.data_subset = data_subset
@@ -282,8 +282,8 @@ class DeepFeatureGenerator:
         self.overlap = self.window_len - self.stride
 
     def __data_generation(self, index):
-        with h5py.File(join(self.feature_paths[index][0], self.feature_paths[index][1] + "_" + self.feature_type),
-                       'r') as hf:
+        path = join(self.feature_paths[index][0], self.feature_paths[index][1] + "_" + self.feature_type)
+        with h5py.File(path, 'r') as hf:
             if 'baidu' in self.feature_type:
                 X = take(hf[self.feature_type.split('.')[0].split('_')[0]],
                          range(self.frame_dims[0], self.frame_dims[1]), mode='wrap', axis=1)
@@ -333,10 +333,10 @@ class DeepFeatureGenerator:
 
                 Y = to_categorical(Y, num_classes=18)
                 for i in enumerate(idx):
-                    yield X[i[1]: i[1] + self.window_len, ...], Y[i[0], ...]
+                    yield path, i[1], Y[i[0], ...].astype(uint8)
             else:
                 for i in enumerate(idx):
-                    yield X[i[1]: i[1] + self.window_len, ...]
+                    yield path, i[1]
 
     def get_replays(self, index):
         camera_labels = json.load(open(join(self.feature_paths[index][0], "Labels-cameras.json")))
